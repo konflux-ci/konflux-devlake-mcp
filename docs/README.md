@@ -15,7 +15,7 @@ All diagrams are in Mermaid format and can be viewed in any Mermaid-compatible v
 
 #### Visual Diagrams:
 
-1. **[System Architecture](./architecture-diagram.mmd)** 
+1. **[System Architecture](./architecture-diagram.mmd)**
    - Complete system overview
    - Component relationships
    - Data flow between layers
@@ -140,6 +140,5 @@ All diagrams use [Mermaid](https://mermaid.js.org/) syntax, which provides:
 
 ---
 
-**Last Updated**: October 2025  
+**Last Updated**: October 2025
 **Maintained By**: Konflux DevLake MCP Team
-

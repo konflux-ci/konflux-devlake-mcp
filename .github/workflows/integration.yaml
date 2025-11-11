@@ -1,0 +1,78 @@
+---
+name: Integration Tests
+
+'on':
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test_password
+          MYSQL_DATABASE: lake
+          MYSQL_USER: devlake
+          MYSQL_PASSWORD: devlake_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -u root -ptest_password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+          --tmpfs /var/lib/mysql:rw,noexec,nosuid,size=1024m
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Wait for MySQL to be ready
+        run: |
+          for i in {1..30}; do
+            if mysqladmin ping \
+              -h "127.0.0.1" -P 3306 -u devlake \
+              -pdevlake_password --silent; then
+              echo "MySQL is ready!"
+              break
+            fi
+            echo "Waiting for MySQL... ($i/30)"
+            sleep 2
+          done
+
+      - name: Initialize test database
+        run: |
+          mysql -h 127.0.0.1 -P 3306 -u root -ptest_password \
+            < testdata/mysql/01-schema.sql
+          mysql -h 127.0.0.1 -P 3306 -u root -ptest_password \
+            < testdata/mysql/02-test-data.sql
+
+      - name: Run integration tests
+        env:
+          TEST_DB_HOST: 127.0.0.1
+          TEST_DB_PORT: 3306
+          TEST_DB_USER: devlake
+          TEST_DB_PASSWORD: devlake_password
+          TEST_DB_NAME: lake
+        run: python run_tests.py --integration --verbose

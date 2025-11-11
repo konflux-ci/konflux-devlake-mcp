@@ -5,7 +5,7 @@ This document describes all the visual diagrams available for the Konflux DevLak
 ## Available Diagrams
 
 ### 1. System Architecture Diagram
-**File**: `architecture-diagram.mmd`  
+**File**: `architecture-diagram.mmd`
 **Purpose**: Complete system overview showing all components and their relationships
 
 **Shows**:
@@ -22,7 +22,7 @@ This document describes all the visual diagrams available for the Konflux DevLak
 ---
 
 ### 2. Natural Language Processing Flow
-**File**: `natural-language-flow.mmd`  
+**File**: `natural-language-flow.mmd`
 **Purpose**: Visualize how natural language queries transform into SQL
 
 **Shows**:
@@ -40,7 +40,7 @@ This document describes all the visual diagrams available for the Konflux DevLak
 ---
 
 ### 3. Data Flow Sequence Diagram
-**File**: `data-flow-diagram.mmd`  
+**File**: `data-flow-diagram.mmd`
 **Purpose**: Detailed sequence of request/response interactions
 
 **Shows**:
@@ -55,7 +55,7 @@ This document describes all the visual diagrams available for the Konflux DevLak
 ---
 
 ### 4. Security Architecture
-**File**: `security-architecture.mmd`  
+**File**: `security-architecture.mmd`
 **Purpose**: Security validation layers and checks
 
 **Shows**:
@@ -70,7 +70,7 @@ This document describes all the visual diagrams available for the Konflux DevLak
 ---
 
 ### 5. Deployment Architecture
-**File**: `deployment-architecture.mmd`  
+**File**: `deployment-architecture.mmd`
 **Purpose**: Kubernetes deployment structure
 
 **Shows**:
@@ -86,7 +86,7 @@ This document describes all the visual diagrams available for the Konflux DevLak
 ---
 
 ### 6. Tools Architecture
-**File**: `tools-architecture.mmd`  
+**File**: `tools-architecture.mmd`
 **Purpose**: Tool system organization and module relationships
 
 **Shows**:
@@ -157,4 +157,3 @@ Diagrams use consistent color coding:
 ---
 
 **Last Updated**: October 2025
-

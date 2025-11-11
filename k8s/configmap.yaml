@@ -1,3 +1,4 @@
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,11 +13,11 @@ data:
   DB_HOST: "devlake-mysql"
   DB_PORT: "3306"
   DB_DATABASE: "lake"
-  
+
   # Server configuration
   SERVER_HOST: "0.0.0.0"
   SERVER_PORT: "3000"
   SERVER_TRANSPORT: "http"
-  
+
   # Logging configuration
-  LOG_LEVEL: "INFO" 
+  LOG_LEVEL: "INFO"

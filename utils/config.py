@@ -4,44 +4,45 @@ Konflux DevLake MCP Server - Configuration Utility
 """
 
 import os
-from dataclasses import dataclass
-from typing import Optional
 
 
-@dataclass
 class DatabaseConfig:
     """Database configuration"""
-    host: str = "localhost"
-    port: int = 3306
-    user: str = "root"
-    password: str = ""
-    database: str = ""
+
+    def __init__(self, host="localhost", port=3306, user="root", password="", database=""):
+        self.host = host
+        self.port = port
+        self.user = user
+        self.password = password
+        self.database = database
 
 
-@dataclass
 class ServerConfig:
     """Server configuration"""
-    transport: str = "stdio"
-    host: str = "0.0.0.0"
-    port: int = 3000
+
+    def __init__(self, transport="stdio", host="0.0.0.0", port=3000):
+        self.transport = transport
+        self.host = host
+        self.port = port
 
 
-@dataclass
 class LoggingConfig:
     """Logging configuration"""
-    level: str = "INFO"
-    format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+    def __init__(self, level="INFO", format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"):
+        self.level = level
+        self.format = format
 
 
 class KonfluxDevLakeConfig:
     """Konflux DevLake MCP Server Configuration"""
-    
+
     def __init__(self):
         self.database = DatabaseConfig()
         self.server = ServerConfig()
         self.logging = LoggingConfig()
         self._load_from_env()
-    
+
     def _load_from_env(self):
         """Load configuration from environment variables"""
         # Database configuration
@@ -50,15 +51,15 @@ class KonfluxDevLakeConfig:
         self.database.user = os.getenv("DB_USER", self.database.user)
         self.database.password = os.getenv("DB_PASSWORD", self.database.password)
         self.database.database = os.getenv("DB_DATABASE", self.database.database)
-        
+
         # Server configuration
         self.server.transport = os.getenv("TRANSPORT", self.server.transport)
         self.server.host = os.getenv("SERVER_HOST", self.server.host)
         self.server.port = int(os.getenv("SERVER_PORT", str(self.server.port)))
-        
+
         # Logging configuration
         self.logging.level = os.getenv("LOG_LEVEL", self.logging.level)
-    
+
     def get_database_config(self) -> dict:
         """Get database configuration as dictionary"""
         return {
@@ -66,17 +67,17 @@ class KonfluxDevLakeConfig:
             "port": self.database.port,
             "user": self.database.user,
             "password": self.database.password,
-            "database": self.database.database
+            "database": self.database.database,
         }
-    
+
     def get_server_config(self) -> dict:
         """Get server configuration as dictionary"""
         return {
             "transport": self.server.transport,
             "host": self.server.host,
-            "port": self.server.port
+            "port": self.server.port,
         }
-    
+
     def validate(self) -> bool:
         """Validate configuration"""
         if not self.database.host:
@@ -88,7 +89,7 @@ class KonfluxDevLakeConfig:
         if self.server.port <= 0 or self.server.port > 65535:
             return False
         return True
-    
+
     def __str__(self) -> str:
         """String representation of configuration"""
         return f"""
@@ -104,4 +105,4 @@ Konflux DevLake MCP Server Configuration:
     Port: {self.server.port}
   Logging:
     Level: {self.logging.level}
-        """ 
+        """

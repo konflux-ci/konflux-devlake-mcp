@@ -1,10 +1,11 @@
+---
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: konflux-devlake
 
 resources:
-#  - namespace.yaml
+  # - namespace.yaml
   - serviceaccount.yaml
   - configmap.yaml
   - mcp-server-deployment.yaml

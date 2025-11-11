@@ -13,19 +13,19 @@ sequenceDiagram
     H->>M: MCP Protocol Request
     M->>TH: Route to Tool Handler
     TH->>SEC: Validate Query Security
-    
+
     alt Security Valid
         TH->>TM: Call Tool: execute_query
         TM->>DB: Execute query tool
         DB->>CON: Validate & Prepare SQL
-        
+
         CON->>MySQL: SELECT * FROM incidents WHERE...
         MySQL-->>CON: Query Results
-        
+
         CON-->>DB: Structured Data
         DB->>SEC: Mask Sensitive Data
         SEC-->>DB: Masked Results
-        
+
         DB-->>TM: JSON Response
         TM-->>TH: Tool Result
         TH-->>M: Processed Result
@@ -37,4 +37,3 @@ sequenceDiagram
         M-->>H: Security Error
         H-->>U: Access Denied
     end
-

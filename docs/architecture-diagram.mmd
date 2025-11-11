@@ -8,25 +8,25 @@ graph TB
             HTTP[HTTP Transport<br/>Production]
             STDIO[STDIO Transport<br/>Development]
         end
-        
+
         subgraph "Core Server"
             MCP[MCP Server<br/>Protocol Handler]
             HANDLER[Tool Handler<br/>Security & Validation]
         end
-        
+
         subgraph "Tools System"
             TM[Tools Manager]
             DB[Database Tools]
             INC[Incident Tools]
             DEP[Deployment Tools]
         end
-        
+
         subgraph "Security Layer"
             SEC[Security Manager]
             SQL[SQL Injection Detector]
             MASK[Data Masking]
         end
-        
+
         subgraph "Database Layer"
             DB_CONN[Database Connection<br/>PyMySQL with DictCursor]
         end
@@ -62,4 +62,3 @@ graph TB
     style TM fill:#e8f5e9
     style SEC fill:#ffebee
     style MYSQL fill:#f3e5f5
-

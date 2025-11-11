@@ -45,13 +45,16 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  HTTP Mode (Production): python konflux-devlake-mcp.py --transport http --host 0.0.0.0 --port 3000 \\
-                        --db-host localhost --db-user root --db-password password --db-database lake
-  STDIO Mode (Development): python konflux-devlake-mcp.py --transport stdio --db-host localhost \\
-                           --db-user root --db-password password
-  Debug Mode: python konflux-devlake-mcp.py --transport http --log-level DEBUG \\
-             --db-host localhost --db-user root --db-password password
-        """
+  HTTP Mode (Production):
+    python konflux-devlake-mcp.py --transport http --host 0.0.0.0 --port 3000 \
+      --db-host localhost --db-user root --db-password password --db-database lake
+  STDIO Mode (Development):
+    python konflux-devlake-mcp.py --transport stdio --db-host localhost \
+      --db-user root --db-password password
+  Debug Mode:
+    python konflux-devlake-mcp.py --transport http --log-level DEBUG \
+      --db-host localhost --db-user root --db-password password
+        """,
     )
 
     parser.add_argument(
@@ -60,21 +63,21 @@ Examples:
         choices=["stdio", "http"],
         default="http",
         help="Transport protocol: 'stdio' for local development (direct communication), "
-             "'http' for production server (network accessible)"
+        "'http' for production server (network accessible)",
     )
     parser.add_argument(
         "--host",
         type=str,
         default="0.0.0.0",
         help="HTTP server host address (default: 0.0.0.0 for all network interfaces). "
-             "Use '127.0.0.1' for localhost only, '0.0.0.0' for all interfaces"
+        "Use '127.0.0.1' for localhost only, '0.0.0.0' for all interfaces",
     )
     parser.add_argument(
         "--port",
         type=int,
         default=3000,
         help="HTTP server port number (default: 3000). Must be available and not in use. "
-             "Common alternatives: 8080, 8000, 5000"
+        "Common alternatives: 8080, 8000, 5000",
     )
 
     # Database Connection Configuration
@@ -83,35 +86,35 @@ Examples:
         type=str,
         default="localhost",
         help="Database server hostname or IP address (default: localhost). "
-             "For remote databases, use the actual server address"
+        "For remote databases, use the actual server address",
     )
     parser.add_argument(
         "--db-port",
         type=int,
         default=3306,
         help="Database server port number (default: 3306 for MySQL). "
-             "Use 5432 for PostgreSQL, 1433 for SQL Server"
+        "Use 5432 for PostgreSQL, 1433 for SQL Server",
     )
     parser.add_argument(
         "--db-user",
         type=str,
         default="root",
         help="Database username for authentication (default: root). "
-             "Must have appropriate permissions to access DevLake tables"
+        "Must have appropriate permissions to access DevLake tables",
     )
     parser.add_argument(
         "--db-password",
         type=str,
         default="",
         help="Database password for authentication (default: empty). "
-             "For security, consider using environment variables or config files"
+        "For security, consider using environment variables or config files",
     )
     parser.add_argument(
         "--db-database",
         type=str,
         default="",
         help="Default database name to connect to (default: empty). "
-             "Usually 'lake' for DevLake installations. Leave empty for auto-detection"
+        "Usually 'lake' for DevLake installations. Leave empty for auto-detection",
     )
 
     # Logging Configuration
@@ -121,8 +124,8 @@ Examples:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         default="INFO",
         help="Logging verbosity level (default: INFO). "
-             "DEBUG: Detailed debug info, INFO: General operations, "
-             "WARNING: Only warnings and errors, ERROR: Only errors"
+        "DEBUG: Detailed debug info, INFO: General operations, "
+        "WARNING: Only warnings and errors, ERROR: Only errors",
     )
 
     return parser
@@ -190,7 +193,11 @@ async def run_server(config: KonfluxDevLakeConfig) -> int:
         log_system_info()
 
         server = server_factory.create_server(config)
-        transport_kwargs = {"host": config.server.host, "port": config.server.port} if config.server.transport == "http" else {}
+        transport_kwargs = (
+            {"host": config.server.host, "port": config.server.port}
+            if config.server.transport == "http"
+            else {}
+        )
         transport = server_factory.create_transport(config.server.transport, **transport_kwargs)
 
         logger.info(f"Server created with {config.server.transport} transport")

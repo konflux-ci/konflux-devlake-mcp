@@ -11,11 +11,11 @@ graph LR
             DT4[get_table_schema]
             DT5[execute_query]
         end
-        
+
         subgraph "Incident Tools"
             IT1[get_incidents<br/>with deduplication]
         end
-        
+
         subgraph "Deployment Tools"
             DEP1[get_deployments<br/>with filtering]
         end
@@ -44,4 +44,3 @@ graph LR
     style DT5 fill:#e1f5ff
     style IT1 fill:#fff9c4
     style DEP1 fill:#f3e5f5
-

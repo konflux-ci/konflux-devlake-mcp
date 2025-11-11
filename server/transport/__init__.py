@@ -10,4 +10,4 @@ from server.transport.base_transport import BaseTransport
 from server.transport.stdio_transport import StdioTransport
 from server.transport.http_transport import HttpTransport
 
-__all__ = ["BaseTransport", "StdioTransport", "HttpTransport"] 
+__all__ = ["BaseTransport", "StdioTransport", "HttpTransport"]

@@ -2,21 +2,21 @@ graph TB
     subgraph "Request Flow"
         REQ[Incoming Request]
     end
-    
+
     subgraph "Security Layers"
         L1[Input Validation]
         L2[SQL Injection Detection]
         L3[Query Validation]
         L4[Resource Limits]
     end
-    
+
     subgraph "Security Checks"
         CHECK1{SQL Keywords}
         CHECK2{Pattern Match}
         CHECK3{Query Type}
         CHECK4{Length Valid}
     end
-    
+
     subgraph "Execution"
         EXEC[Execute Query]
         MASK[Data Masking]
@@ -42,4 +42,3 @@ graph TB
     style BLOCK3 fill:#ffcdd2
     style BLOCK4 fill:#ffcdd2
     style EXEC fill:#c8e6c9
-

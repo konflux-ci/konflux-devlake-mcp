@@ -10,13 +10,13 @@ from utils.logger import get_logger, log_system_info, shutdown_logging, LoggerMi
 from utils.security import KonfluxDevLakeSecurityManager, SQLInjectionDetector, DataMasking
 
 __all__ = [
-    "KonfluxDevLakeConnection", 
+    "KonfluxDevLakeConnection",
     "KonfluxDevLakeConfig",
     "get_logger",
-    "log_system_info", 
+    "log_system_info",
     "shutdown_logging",
     "LoggerMixin",
     "KonfluxDevLakeSecurityManager",
     "SQLInjectionDetector",
-    "DataMasking"
-] 
+    "DataMasking",
+]

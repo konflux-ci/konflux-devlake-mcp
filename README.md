@@ -1,5 +1,9 @@
 # Konflux DevLake MCP Server
 
+[![Unit Tests](https://github.com/konflux-ci/konflux-devlake-mcp/actions/workflows/unit.yaml/badge.svg)](https://github.com/konflux-ci/konflux-devlake-mcp/actions/workflows/unit.yaml)
+[![Integration Tests](https://github.com/konflux-ci/konflux-devlake-mcp/actions/workflows/integration.yaml/badge.svg)](https://github.com/konflux-ci/konflux-devlake-mcp/actions/workflows/integration.yaml)
+[![E2E Tests](https://github.com/konflux-ci/konflux-devlake-mcp/actions/workflows/e2e.yaml/badge.svg)](https://github.com/konflux-ci/konflux-devlake-mcp/actions/workflows/e2e.yaml)
+
 A MCP server that enables natural language querying of Konflux DevLake databases. This server acts as a bridge between AI assistants and your DevLake database, allowing you to ask questions in plain language and get structured data back.
 
 ## 📚 Documentation
@@ -123,6 +127,36 @@ Keep track of your server's health and performance:
 - **Error Logs**: `logs/konflux_devlake_mcp_server_error.log` - Detailed error information for troubleshooting
 - **Health Check**: `GET http://localhost:3000/health` - Monitor server status and connectivity
 
+### Testing
+
+Use Makefile to easily run local tests on MCP tools (requires docker engine and LLM API key):
+
+```bash
+make install
+
+make test-unit
+make test-integration
+make test-e2e
+
+make test-all
+```
+
+### Linting & pre-commit
+
+Automatically run linters when making a commit:
+
+```bash
+make install
+pre-commit install
+
+pre-commit run --all-files
+```
+
+Configured tools:
+- black (python formatting)
+- flake8 (python style/lint)
+- yamllint (YAML validation)
+
 ## Contributing
 
 We welcome contributions to improve this project:
@@ -140,4 +174,4 @@ This MCP server is particularly useful for:
 - **DevOps Teams**: Monitor incidents and deployments through natural language queries
 - **AI Assistants**: Enable AI tools to access and analyze your DevLake data
 - **Business Intelligence**: Generate reports and insights from your DevLake database
-- **Development Teams**: Debug and analyze application performance data 
+- **Development Teams**: Debug and analyze application performance data

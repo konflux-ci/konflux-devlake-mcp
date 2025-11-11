@@ -8,4 +8,4 @@ security validation, and error handling.
 
 from server.handlers.tool_handler import ToolHandler
 
-__all__ = ["ToolHandler"] 
+__all__ = ["ToolHandler"]

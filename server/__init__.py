@@ -14,8 +14,8 @@ from server.transport.http_transport import HttpTransport
 
 __all__ = [
     "KonfluxDevLakeMCPServer",
-    "ServerFactory", 
+    "ServerFactory",
     "BaseTransport",
     "StdioTransport",
-    "HttpTransport"
-] 
+    "HttpTransport",
+]

@@ -8,4 +8,4 @@ This package contains DevLake-specific tools for incident and deployment analysi
 from tools.devlake.incident_tools import IncidentTools
 from tools.devlake.deployment_tools import DeploymentTools
 
-__all__ = ["IncidentTools", "DeploymentTools"] 
+__all__ = ["IncidentTools", "DeploymentTools"]

@@ -1,32 +1,31 @@
 flowchart TD
     START([User Query in Natural Language]) --> NL["Show me all critical<br/>incidents from October 2025"]
-    
+
     NL --> AI[AI Agent Analysis<br/>Intent Recognition]
-    
+
     AI --> INTENT{Extract Intent}
     INTENT -->|Understand| PARAMS[Extract Parameters]
     PARAMS --> SCHEMA[Query Database Schema<br/>get_table_schema tool]
-    
+
     SCHEMA --> BUILD[Build SQL Query]
     BUILD --> SQL["SELECT * FROM lake.incidents<br/>WHERE status = 'CRITICAL'<br/>AND created_date >= '2025-10-01'<br/>AND created_date <= '2025-10-31'"]
-    
+
     SQL --> VALIDATE[Security Validation]
     VALIDATE -->|Valid| EXEC[Execute Query]
     VALIDATE -->|Invalid| BLOCK[Block Query]
-    
+
     EXEC --> DB[(DevLake Database)]
     DB --> RESULTS[Raw Results]
-    
+
     RESULTS --> MASK[Mask Sensitive Data]
     MASK --> FORMAT[Format Results]
     FORMAT --> RESPONSE["Return Structured JSON"]
-    
+
     RESPONSE --> USER([Present to User])
-    
+
     style START fill:#e1f5ff
     style AI fill:#fff4e1
     style SQL fill:#e8f5e9
     style VALIDATE fill:#ffebee
     style DB fill:#f3e5f5
     style RESPONSE fill:#e1f5ff
-

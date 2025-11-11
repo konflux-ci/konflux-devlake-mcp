@@ -14,10 +14,10 @@ The server's primary innovation is its ability to:
 
 This eliminates the need for users to know SQL syntax while maintaining security and performance through direct database queries.
 
-**Version**: 1.0.0  
-**License**: Open Source  
-**Language**: Python 3.11+  
-**Framework**: MCP Protocol  
+**Version**: 1.0.0
+**License**: Open Source
+**Language**: Python 3.11+
+**Framework**: MCP Protocol
 
 ---
 
@@ -126,7 +126,7 @@ Natural Language Analysis
     ↓
 SQL Query Generation
     ↓
-SELECT * FROM lake.incidents WHERE status = 'TODO' 
+SELECT * FROM lake.incidents WHERE status = 'TODO'
   AND created_date >= '2025-10-01' AND created_date < '2025-11-01'
     ↓
 Execute Query via execute_query Tool
@@ -185,23 +185,23 @@ Retrieve and Return Results
 **Example 1: Time-Based Filtering**
 ```
 Natural Language: "Show me incidents from October 2025"
-SQL Generated: SELECT * FROM lake.incidents 
-  WHERE created_date >= '2025-10-01' 
+SQL Generated: SELECT * FROM lake.incidents
+  WHERE created_date >= '2025-10-01'
     AND created_date <= '2025-10-31'
 ```
 
 **Example 2: Status Filtering**
 ```
 Natural Language: "Find all open incidents"
-SQL Generated: SELECT * FROM lake.incidents 
+SQL Generated: SELECT * FROM lake.incidents
   WHERE status = 'TODO' OR status = 'IN_PROGRESS'
 ```
 
 **Example 3: Complex Aggregation**
 ```
 Natural Language: "Count retests per PR for integration service"
-SQL Generated: 
-  SELECT 
+SQL Generated:
+  SELECT
     pr.title,
     pr.url,
     COUNT(*) as retest_count
@@ -289,7 +289,7 @@ The natural language processing integrates seamlessly with the tool system:
 
 #### KonfluxDevLakeMCPServer
 
-**Purpose**: Core MCP protocol server implementation  
+**Purpose**: Core MCP protocol server implementation
 **Key Responsibilities**:
 - MCP protocol handling and request routing
 - Tool registration and management
@@ -315,7 +315,7 @@ def get_server_info() -> Dict[str, Any]
 
 #### ServerFactory
 
-**Purpose**: Dependency injection and server construction  
+**Purpose**: Dependency injection and server construction
 **Key Responsibilities**:
 - Server instance creation
 - Transport layer initialization
@@ -340,7 +340,7 @@ validate_configuration(config: KonfluxDevLakeConfig) -> bool
 
 #### BaseTransport (Abstract)
 
-**Purpose**: Define transport interface  
+**Purpose**: Define transport interface
 **Interface Methods**:
 ```python
 async def start(server: Server) -> None
@@ -350,8 +350,8 @@ def get_transport_info() -> Dict[str, Any]
 
 #### HTTP Transport
 
-**Purpose**: Production-ready HTTP/HTTPS communication  
-**Technology**: Uvicorn + Starlette  
+**Purpose**: Production-ready HTTP/HTTPS communication
+**Technology**: Uvicorn + Starlette
 **Features**:
 - Health check endpoints (`/health`)
 - Security statistics (`/security/stats`)
@@ -377,8 +377,8 @@ class HttpTransport:
 
 #### STDIO Transport
 
-**Purpose**: Local development and testing  
-**Technology**: Standard input/output streams  
+**Purpose**: Local development and testing
+**Technology**: Standard input/output streams
 **Features**:
 - Direct process communication
 - Simplified debugging
@@ -390,7 +390,7 @@ class HttpTransport:
 
 #### Tools Manager
 
-**Purpose**: Coordinate all tool modules  
+**Purpose**: Coordinate all tool modules
 **Architecture**: Plugin-based modular system
 
 **Module Types**:
@@ -482,7 +482,7 @@ def mask_database_result(result: Any) -> Any:
 
 #### Database Connection Manager
 
-**Purpose**: Async database connectivity and query execution  
+**Purpose**: Async database connectivity and query execution
 **Technology**: PyMySQL with DictCursor
 
 **Key Features**:
@@ -610,10 +610,10 @@ logger.warning("Potential SQL injection detected")
 
 ### Docker Container
 
-**Base Image**: `python:3.11-slim`  
-**Multi-stage Build**: Builder + Runtime stages  
-**User**: Non-root `app` user  
-**Port**: 3000  
+**Base Image**: `python:3.11-slim`
+**Multi-stage Build**: Builder + Runtime stages
+**User**: Non-root `app` user
+**Port**: 3000
 
 **Build Process**:
 ```dockerfile
@@ -689,7 +689,7 @@ from tools.base.base_tool import BaseTool
 class MyNewTools(BaseTool):
     def get_tools(self) -> List[Tool]:
         # Define tools
-        
+
     async def call_tool(self, name: str, arguments: Dict[str, Any]) -> str:
         # Implement tool logic
 ```
@@ -713,7 +713,7 @@ def _validate_tool_request(self, name: str, arguments: Dict[str, Any]):
 class MyCustomTransport(BaseTransport):
     async def start(self, server: Server) -> None:
         # Implement transport
-        
+
     async def stop(self) -> None:
         # Implement cleanup
 ```
@@ -879,7 +879,6 @@ The Konflux DevLake MCP Server development team
 
 ---
 
-**Last Updated**: October 2025  
-**Version**: 1.0.0  
+**Last Updated**: October 2025
+**Version**: 1.0.0
 **Status**: Production Ready ✅
-

@@ -50,6 +50,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+e2e_logs/
 
 # Translations
 *.mo
@@ -284,12 +285,6 @@ Thumbs.db
 *.p12
 *.pfx
 
-# Docker
-.dockerignore
-Dockerfile
-docker-compose.yml
-docker-compose.yaml
-
 # Terraform
 *.tfstate
 *.tfstate.*
@@ -312,4 +307,4 @@ htmlcov/
 .coverage
 .coverage.*
 coverage.xml
-*.cover 
+*.cover

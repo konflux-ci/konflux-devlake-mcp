@@ -4,19 +4,19 @@ graph TB
             subgraph "Application Pods"
                 POD1[MCP Server Pod<br/>Konflux DevLake]
             end
-            
+
             subgraph "Network"
                 SVC[Service<br/>Port 3000]
                 ROUTE[Route<br/>External Access]
             end
-            
+
             subgraph "Configuration"
                 CM[ConfigMap<br/>App Config]
                 SECRET[Secret<br/>Database Credentials]
                 SA[ServiceAccount<br/>RBAC]
             end
         end
-        
+
         subgraph "Database Layer"
             EXT_DB[(External MySQL<br/>DevLake Database)]
         end
@@ -44,4 +44,3 @@ graph TB
     style SECRET fill:#ffebee
     style EXT_DB fill:#f3e5f5
     style CLIENT fill:#e1f5ff
-
