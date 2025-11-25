@@ -19,6 +19,7 @@ from utils.db import DateTimeEncoder
 class DatabaseTools(BaseTool):
     """
     Database-related tools for Konflux DevLake MCP Server.
+    New line.
 
     This class provides tools for database connectivity, exploration,
     and query execution with proper error handling and logging.
