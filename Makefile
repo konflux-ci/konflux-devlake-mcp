@@ -44,8 +44,6 @@ test-e2e:
 	    for m in $$E2E_TEST_MODELS; do \
 	      case "$$m" in \
 	        gemini/*) [ -n "$$GEMINI_API_KEY" ] && out="$${out:+$${out},}$$m" ;; \
-	        gpt-4o*) [ -n "$$OPENAI_API_KEY" ] && out="$${out:+$${out},}$$m" ;; \
-	        claude-*) [ -n "$$ANTHROPIC_API_KEY" ] && out="$${out:+$${out},}$$m" ;; \
 	        *) out="$${out:+$${out},}$$m" ;; \
 	      esac; \
 	    done; \
@@ -53,13 +51,11 @@ test-e2e:
 	  else \
 	    out=""; \
 	    [ -n "$$GEMINI_API_KEY" ] && out="$${out:+$${out},}gemini/gemini-2.5-pro"; \
-	    [ -n "$$OPENAI_API_KEY" ] && out="$${out:+$${out},}gpt-4o"; \
-	    [ -n "$$ANTHROPIC_API_KEY" ] && out="$${out:+$${out},}claude-3-5-sonnet-20240620"; \
 	    echo "   Models: $${out:-none}"; \
 	  fi; \
 	}
-	@if [ -z "$$OPENAI_API_KEY" ] && [ -z "$$ANTHROPIC_API_KEY" ] && [ -z "$$GEMINI_API_KEY" ]; then \
-		echo "❌ No LLM API keys set. Set at least one of OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY."; \
+	@if [ -z "$$GEMINI_API_KEY" ]; then \
+		echo "❌ No LLM API keys set. Set GEMINI_API_KEY."; \
 		exit 1; \
 	fi
 	@docker compose up -d mysql || docker-compose up -d mysql
@@ -136,9 +132,9 @@ help-test:
 	@echo ""
 	@echo "  E2E Tests (Tests tool functionality using a LLM):"
 	@echo "    test-e2e         - E2E tests with LLM integration"
-	@echo "                       Default: gpt-4o, claude-3-5-sonnet-20240620, gemini/gemini-2.5-pro"
+	@echo "                       Default: gemini/gemini-2.5-pro"
 	@echo "                       Note: Gemini requires 'gemini/' prefix"
-	@echo "                       Requires one: API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY)"
+	@echo "                       Requires: GEMINI_API_KEY"
 	@echo ""
 	@echo "  All Tests (Unit + Integration + E2E):"
 	@echo "    test-all         - All tests (requires integration and e2e requirements to be met)"

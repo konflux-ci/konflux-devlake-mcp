@@ -53,9 +53,9 @@ class KonfluxDevLakeConnection:
     async def connect(self) -> Dict[str, Any]:
         """Connect to the database"""
         try:
-            self.logger.info(
-                f"Connecting to database at {self.config['host']}:{self.config['port']}"
-            )
+            host = self.config["host"]
+            port = self.config["port"]
+            self.logger.info(f"Connecting to database at {host}:{port}")
 
             # Database connection with timeout settings for long-running queries
             connect_timeout = self.config.get("connect_timeout", 30)
@@ -63,8 +63,8 @@ class KonfluxDevLakeConnection:
             write_timeout = self.config.get("write_timeout", 60)
 
             self.connection = pymysql.connect(
-                host=self.config["host"],
-                port=self.config["port"],
+                host=host,
+                port=port,
                 user=self.config["user"],
                 password=self.config["password"],
                 database=self.config.get("database"),

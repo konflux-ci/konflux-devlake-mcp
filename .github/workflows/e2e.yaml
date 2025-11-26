@@ -4,54 +4,69 @@ name: E2E Tests
 'on':
   push:
     branches: [main]
-  pull_request:
+  pull_request_target:
   workflow_dispatch:
     inputs:
       test_models:
         description: >-
-          Comma-separated models (e.g.
-          gemini/gemini-2.5-pro,gpt-4o,claude-3-5-sonnet-20240620)
+          Gemini LLM models to test
         required: false
-        default: "gemini/gemini-2.5-pro,gpt-4o,claude-3-5-sonnet-20240620"
+        default: "gemini/gemini-2.5-pro"
 
 permissions:
   contents: read
 
 jobs:
+  gate:
+    name: Gate (ok-to-test)
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+    steps:
+      - name: Decide if e2e should run
+        id: gate
+        shell: bash
+        run: |
+          RUN=false
+          # Non-PR target events (push/workflow_dispatch) always run
+          if [ "${{ github.event_name }}" != "pull_request_target" ]; then
+            RUN=true
+          else
+            # For pull_request_target:
+            BASE="${{ github.repository }}"
+            HEAD="${{ github.event.pull_request.head.repo.full_name }}"
+            if [ "$BASE" = "$HEAD" ]; then
+              # Same-repo PRs always run
+              RUN=true
+            else
+              # Fork PRs require ok-to-test label
+              LABELS_JSON='${{ toJson(github.event.pull_request.labels) }}'
+              if echo "$LABELS_JSON" | grep -qi '"name":"ok-to-test"'; then
+                RUN=true
+              else
+                echo "::notice::Fork PR is missing 'ok-to-test' label. Skipping e2e."
+              fi
+            fi
+          fi
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+
   e2e-secrets-precheck:
     name: E2E secret precheck
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Fail if no LLM API keys set
         run: |
-          if [ -z "${{ secrets.OPENAI_API_KEY }}" ] && \
-             [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ] && \
-             [ -z "${{ secrets.GEMINI_API_KEY }}" ]; then
-            echo "::error::No LLM API keys set."
-            echo "::error::Set at least one of OPENAI_API_KEY,"
-            echo "::error::ANTHROPIC_API_KEY or GEMINI_API_KEY."
+          if [ -z "${{ secrets.GEMINI_API_KEY }}" ]; then
+            echo "::error::Set GEMINI_API_KEY."
             exit 1
           fi
   e2e-tests:
-    name: E2E Tests (${{ matrix.model }})
-    needs: e2e-secrets-precheck
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+    name: E2E Tests
+    needs: [gate, e2e-secrets-precheck]
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - model: gemini/gemini-2.5-pro
-            require_secret: GEMINI_API_KEY
-          - model: gpt-4o
-            require_secret: OPENAI_API_KEY
-          - model: claude-3-5-sonnet-20240620
-            require_secret: ANTHROPIC_API_KEY
     services:
       mysql:
         image: mysql:8.0
@@ -72,44 +87,25 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          repository: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name) || '' }}
+          ref: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.ref) || '' }}
 
       - name: Install MySQL client
         run: |
           sudo apt-get update
           sudo apt-get install -y mysql-client
 
-      - name: Select model if required secret is present
-        id: select
-        shell: bash
-        run: |
-          RUN=false
-          REQ=${{ matrix.require_secret }}
-          if [ -z "$REQ" ]; then
-            RUN=true
-          elif [ "$REQ" = "OPENAI_API_KEY" ] && \
-               [ -n "${{ secrets.OPENAI_API_KEY }}" ]; then
-            RUN=true
-          elif [ "$REQ" = "ANTHROPIC_API_KEY" ] && \
-               [ -n "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
-            RUN=true
-          elif [ "$REQ" = "GEMINI_API_KEY" ] && \
-               [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
-            RUN=true
-          fi
-          echo "run=$RUN" >> $GITHUB_OUTPUT
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-        if: steps.select.outputs.run == 'true'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-        if: steps.select.outputs.run == 'true'
 
       - name: Wait for MySQL to be ready
         run: |
@@ -122,7 +118,6 @@ jobs:
             echo "Waiting for MySQL... ($i/30)"
             sleep 2
           done
-        if: steps.select.outputs.run == 'true'
 
       - name: Initialize test database schema and data
         run: |
@@ -132,7 +127,6 @@ jobs:
             < testdata/mysql/01-schema.sql
           mysql -h 127.0.0.1 -P 3306 -u root -ptest_password lake \
             < testdata/mysql/02-test-data.sql
-        if: steps.select.outputs.run == 'true'
 
       - name: Run E2E tests for model
         env:
@@ -146,30 +140,15 @@ jobs:
           LITELLM_VERBOSE: "0"
           LITELLM_LOGGING_QUEUE: "0"
           E2E_DB_WAIT_SECS: "45"
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          E2E_TEST_MODELS: ${{ matrix.model }}
         run: |
           pytest tests/e2e -vv --maxfail=1 --tb=short
-        if: steps.select.outputs.run == 'true'
 
-      - name: Summarize E2E results (executed)
-        if: always() && steps.select.outputs.run == 'true'
+      - name: Summarize E2E results
+        if: always()
         run: |
           echo "## E2E Tests Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Model**: ${{ matrix.model }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Suite**: Database, Incidents" >> $GITHUB_STEP_SUMMARY
           echo "  Deployments" >> $GITHUB_STEP_SUMMARY
-
-      - name: Summarize E2E results (skipped - missing secret)
-        if: always() && steps.select.outputs.run != 'true'
-        run: |
-          echo "## E2E Tests Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Model**: ${{ matrix.model }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status**: skipped" >> $GITHUB_STEP_SUMMARY
-          echo "- Missing secret:" >> $GITHUB_STEP_SUMMARY
-          echo "  ${{ matrix.require_secret }}" >> $GITHUB_STEP_SUMMARY

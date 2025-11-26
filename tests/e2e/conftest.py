@@ -16,10 +16,6 @@ def _present_models_from_env():
     present = []
     if os.environ.get("GEMINI_API_KEY"):
         present.append("gemini/gemini-2.5-pro")
-    if os.environ.get("OPENAI_API_KEY"):
-        present.append("gpt-4o")
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        present.append("claude-3-5-sonnet-20240620")
     return present
 
 
@@ -27,9 +23,7 @@ def _has_api_key_for_model(model_name):
     name = model_name.lower()
     if "gemini" in name:
         return bool(os.environ.get("GEMINI_API_KEY"))
-    if "claude" in name:
-        return bool(os.environ.get("ANTHROPIC_API_KEY"))
-    return bool(os.environ.get("OPENAI_API_KEY"))
+    return False
 
 
 _requested_env = os.environ.get("E2E_TEST_MODELS", "").strip()
@@ -44,10 +38,7 @@ if _requested_env:
 else:
     present = _present_models_from_env()
     if not present:
-        pytest.exit(
-            "No LLM API keys found. Set GEMINI_API_KEY, OPENAI_API_KEY, "
-            "or ANTHROPIC_API_KEY to run E2E tests."
-        )
+        pytest.exit("No LLM API keys found. Set GEMINI_API_KEY to run E2E tests.")
     models = present
 
 pytestmark = pytest.mark.anyio

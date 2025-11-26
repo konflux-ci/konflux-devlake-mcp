@@ -166,7 +166,10 @@ class ToolHandler:
         Returns:
             List containing error response as TextContent
         """
-        error_result = {"success": False, "error": error_message}
+        error_result = {
+            "success": False,
+            "error": error_message,
+        }
 
         if tool_name:
             error_result["tool_name"] = tool_name
