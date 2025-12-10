@@ -5,7 +5,7 @@ mcp>=1.23.0
 
 # Database connectivity
 pymysql>=1.1.0
-aiomysql>=0.2.0
+aiomysql>=0.3.0
 
 # HTTP server dependencies
 uvicorn>=0.34.0
