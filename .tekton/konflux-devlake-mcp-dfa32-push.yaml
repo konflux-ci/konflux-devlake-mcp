@@ -598,7 +598,7 @@ spec:
             values:
               - "false"
     workspaces:
-      - name: git-auth
+      - name: git-failure-check
         optional: true
       - name: netrc
         optional: true
