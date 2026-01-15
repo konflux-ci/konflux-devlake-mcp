@@ -3,6 +3,12 @@ graph TB
         REQ[Incoming Request]
     end
 
+    subgraph "Authentication Layer"
+        AUTH[OIDC Middleware]
+        JWT{Valid JWT Token}
+        JWKS[Fetch JWKS]
+    end
+
     subgraph "Security Layers"
         L1[Input Validation]
         L2[SQL Injection Detection]
@@ -23,7 +29,11 @@ graph TB
         RETURN[Return Results]
     end
 
-    REQ --> L1
+    REQ --> AUTH
+    AUTH --> JWKS
+    JWKS --> JWT
+    JWT -->|Valid| L1
+    JWT -->|Invalid| BLOCK0[401 Unauthorized]
     L1 --> L2
     L2 --> CHECK1
     CHECK1 -->|SELECT| CHECK2
@@ -37,8 +47,10 @@ graph TB
     EXEC --> MASK
     MASK --> RETURN
 
+    style BLOCK0 fill:#ffcdd2
     style BLOCK1 fill:#ffcdd2
     style BLOCK2 fill:#ffcdd2
     style BLOCK3 fill:#ffcdd2
     style BLOCK4 fill:#ffcdd2
     style EXEC fill:#c8e6c9
+    style AUTH fill:#e3f2fd

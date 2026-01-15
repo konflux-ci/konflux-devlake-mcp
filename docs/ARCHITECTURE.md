@@ -27,13 +27,14 @@ This eliminates the need for users to know SQL syntax while maintaining security
 2. [Component Overview](#component-overview)
 3. [Transport Layer](#transport-layer)
 4. [Tools System](#tools-system)
-5. [Security Architecture](#security-architecture)
-6. [Database Layer](#database-layer)
-7. [Configuration Management](#configuration-management)
-8. [Logging and Monitoring](#logging-and-monitoring)
-9. [Deployment Architecture](#deployment-architecture)
-10. [API Reference](#api-reference)
-11. [Extension Points](#extension-points)
+5. [Authentication](#authentication)
+6. [Security Architecture](#security-architecture)
+7. [Database Layer](#database-layer)
+8. [Configuration Management](#configuration-management)
+9. [Logging and Monitoring](#logging-and-monitoring)
+10. [Deployment Architecture](#deployment-architecture)
+11. [API Reference](#api-reference)
+12. [Extension Points](#extension-points)
 
 ---
 
@@ -451,7 +452,86 @@ class BaseTool:
 
 ---
 
-### 5. Security Architecture (`utils/security.py`)
+## Authentication
+
+### OIDC Authentication (`server/middleware/`)
+
+The server supports OIDC (OpenID Connect) authentication for securing MCP endpoints. When enabled, requests to `/mcp` endpoints require a valid JWT token from a configured OIDC provider (e.g., Red Hat SSO / Keycloak).
+
+#### Components
+
+**OIDCAuthenticator** (`server/middleware/oidc_auth.py`)
+- Fetches and caches JWKS from the OIDC provider
+- Validates JWT token signatures using RS256
+- Verifies token claims (issuer, audience, expiration)
+- Extracts user information (sub, username, email, groups)
+- Supports Keycloak-specific `realm_access.roles` for group extraction
+
+**AuthMiddleware** (`server/middleware/auth_middleware.py`)
+- ASGI middleware that intercepts HTTP requests
+- Skips authentication for configured paths (e.g., `/health`, `/security`)
+- Extracts Bearer tokens from Authorization headers
+- Returns 401/403 responses for failed authentication
+- Adds user info to request scope for downstream handlers
+
+#### Configuration
+
+```python
+@dataclass
+class OIDCConfig:
+    enabled: bool = False
+    issuer_url: str = ""
+    client_id: str = ""
+    required_scopes: List[str] = []
+    jwks_cache_ttl: int = 3600
+    skip_paths: List[str] = ["/health", "/security"]
+    verify_ssl: bool = True
+```
+
+#### Authentication Flow
+
+```
+Client Request
+    |
+    v
++-------------------+
+|  Auth Middleware  |
++-------------------+
+    |
+    +-- Skip auth for /health, /security
+    |
+    +-- Extract Bearer token
+    |
+    +-- Fetch JWKS from OIDC provider
+    |
+    +-- Validate JWT signature
+    |
+    +-- Verify claims (iss, aud, exp)
+    |
+    +-- Check required scopes
+    |
+    v
++-------------------+
+|   MCP Handler     |
+| (with user info)  |
++-------------------+
+```
+
+#### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `OIDC_ENABLED` | Enable OIDC authentication (`true`/`false`) |
+| `OIDC_ISSUER_URL` | OIDC issuer URL |
+| `OIDC_CLIENT_ID` | OIDC client ID / audience |
+| `OIDC_REQUIRED_SCOPES` | Comma-separated required scopes |
+| `OIDC_JWKS_CACHE_TTL` | JWKS cache TTL in seconds |
+| `OIDC_SKIP_PATHS` | Comma-separated paths to skip auth |
+| `OIDC_VERIFY_SSL` | Verify SSL certificates |
+
+---
+
+### 7. Security Architecture (`utils/security.py`)
 
 #### Security Manager
 
@@ -501,7 +581,7 @@ def mask_database_result(result: Any) -> Any:
 
 ---
 
-### 6. Database Layer (`utils/db.py`)
+### 8. Database Layer (`utils/db.py`)
 
 #### Database Connection Manager
 
@@ -531,7 +611,7 @@ class KonfluxDevLakeConnection:
 
 ---
 
-### 7. Configuration Management (`utils/config.py`)
+### 9. Configuration Management (`utils/config.py`)
 
 #### Configuration Hierarchy
 
@@ -572,7 +652,7 @@ class LoggingConfig:
 
 ---
 
-### 8. Logging and Monitoring (`utils/logger.py`)
+### 10. Logging and Monitoring (`utils/logger.py`)
 
 #### Logging Features
 
@@ -905,9 +985,8 @@ def create_transport(self, transport_type: str, **kwargs):
 3. Caching layer (Redis)
 4. Metrics collection (Prometheus)
 5. Distributed tracing
-6. Authentication/Authorization
-7. Rate limiting per tool
-8. Result caching
+6. Rate limiting per tool
+7. Result caching
 
 ---
 
@@ -933,6 +1012,6 @@ The Konflux DevLake MCP Server development team
 
 ---
 
-**Last Updated**: October 2025
-**Version**: 1.0.0
-**Status**: Production Ready ✅
+**Last Updated**: January 2026
+**Version**: 1.1.0
+**Status**: Production Ready

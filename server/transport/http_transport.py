@@ -13,6 +13,7 @@ from mcp.server import Server
 from anyio import ClosedResourceError
 
 from server.transport.base_transport import BaseTransport
+from server.middleware.auth_middleware import create_auth_middleware
 from utils.logger import get_logger
 
 
@@ -74,6 +75,9 @@ class HttpTransport(BaseTransport):
 
             # Create ASGI app with MCP request handling and error handling
             mcp_app = self._create_mcp_app(app)
+
+            # Apply authentication middleware if OIDC is configured
+            mcp_app = create_auth_middleware(mcp_app, self.config)
 
             # Start server with improved configuration for LLM connections
             # Increased timeouts to handle long-running LLM requests and database queries

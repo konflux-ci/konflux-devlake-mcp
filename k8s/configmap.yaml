@@ -27,3 +27,19 @@ data:
 
   # Logging configuration
   LOG_LEVEL: "INFO"
+
+  # OIDC Authentication (Red Hat SSO / Keycloak)
+  # Set OIDC_ENABLED to "true" to enable authentication
+  OIDC_ENABLED: "false"
+  # Example: https://sso.example.com/auth/realms/your-realm
+  OIDC_ISSUER_URL: ""
+  # The OIDC client ID configured in Red Hat SSO
+  OIDC_CLIENT_ID: ""
+  # Comma-separated list of required scopes (optional)
+  OIDC_REQUIRED_SCOPES: ""
+  # JWKS cache TTL in seconds (default: 3600)
+  OIDC_JWKS_CACHE_TTL: "3600"
+  # Comma-separated list of paths to skip authentication
+  OIDC_SKIP_PATHS: "/health,/security"
+  # Whether to verify SSL certificates (set to "false" for self-signed certs)
+  OIDC_VERIFY_SSL: "true"

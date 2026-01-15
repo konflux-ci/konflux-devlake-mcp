@@ -64,6 +64,28 @@ class LoggingConfig:
         self.format = format
 
 
+class OIDCConfig:
+    """OIDC authentication configuration for Red Hat SSO / Keycloak"""
+
+    def __init__(
+        self,
+        enabled=False,
+        issuer_url="",
+        client_id="",
+        required_scopes=None,
+        jwks_cache_ttl=3600,
+        skip_paths=None,
+        verify_ssl=True,
+    ):
+        self.enabled = enabled
+        self.issuer_url = issuer_url
+        self.client_id = client_id
+        self.required_scopes = required_scopes or []
+        self.jwks_cache_ttl = jwks_cache_ttl
+        self.skip_paths = skip_paths or ["/health", "/security"]
+        self.verify_ssl = verify_ssl
+
+
 class KonfluxDevLakeConfig:
     """Konflux DevLake MCP Server Configuration"""
 
@@ -71,6 +93,7 @@ class KonfluxDevLakeConfig:
         self.database = DatabaseConfig()
         self.server = ServerConfig()
         self.logging = LoggingConfig()
+        self.oidc = OIDCConfig()
         self._load_from_env()
 
     def _load_from_env(self):
@@ -117,6 +140,21 @@ class KonfluxDevLakeConfig:
         # Logging configuration
         self.logging.level = os.getenv("LOG_LEVEL", self.logging.level)
 
+        # OIDC configuration for Red Hat SSO / Keycloak
+        self.oidc.enabled = os.getenv("OIDC_ENABLED", "false").lower() == "true"
+        self.oidc.issuer_url = os.getenv("OIDC_ISSUER_URL", self.oidc.issuer_url)
+        self.oidc.client_id = os.getenv("OIDC_CLIENT_ID", self.oidc.client_id)
+        required_scopes = os.getenv("OIDC_REQUIRED_SCOPES", "")
+        if required_scopes:
+            self.oidc.required_scopes = [s.strip() for s in required_scopes.split(",")]
+        self.oidc.jwks_cache_ttl = int(
+            os.getenv("OIDC_JWKS_CACHE_TTL", str(self.oidc.jwks_cache_ttl))
+        )
+        skip_paths = os.getenv("OIDC_SKIP_PATHS", "")
+        if skip_paths:
+            self.oidc.skip_paths = [s.strip() for s in skip_paths.split(",")]
+        self.oidc.verify_ssl = os.getenv("OIDC_VERIFY_SSL", "true").lower() == "true"
+
     def get_database_config(self) -> dict:
         """Get database configuration as dictionary"""
         return {
@@ -139,6 +177,18 @@ class KonfluxDevLakeConfig:
             "transport": self.server.transport,
             "host": self.server.host,
             "port": self.server.port,
+        }
+
+    def get_oidc_config(self) -> dict:
+        """Get OIDC configuration as dictionary"""
+        return {
+            "enabled": self.oidc.enabled,
+            "issuer_url": self.oidc.issuer_url,
+            "client_id": self.oidc.client_id,
+            "required_scopes": self.oidc.required_scopes,
+            "jwks_cache_ttl": self.oidc.jwks_cache_ttl,
+            "skip_paths": self.oidc.skip_paths,
+            "verify_ssl": self.oidc.verify_ssl,
         }
 
     def validate(self) -> bool:
@@ -168,4 +218,8 @@ Konflux DevLake MCP Server Configuration:
     Port: {self.server.port}
   Logging:
     Level: {self.logging.level}
+  OIDC:
+    Enabled: {self.oidc.enabled}
+    Issuer URL: {self.oidc.issuer_url}
+    Client ID: {self.oidc.client_id}
         """

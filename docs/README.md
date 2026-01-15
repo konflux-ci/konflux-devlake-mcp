@@ -31,6 +31,7 @@ All diagrams are in Mermaid format and can be viewed in any Mermaid-compatible v
    - Error handling flow
 
 4. **[Security Architecture](./security-architecture.mmd)**
+   - OIDC authentication layer
    - Security layers and checks
    - SQL injection prevention
    - Data masking pipeline
@@ -94,7 +95,7 @@ mmdc -i docs/data-flow-diagram.mmd -o docs/images/data-flow-diagram.png
 - **File**: `data-flow-diagram.mmd`
 
 ### Security Model
-- **Purpose**: Security validation layers
+- **Purpose**: OIDC authentication and security validation layers
 - **Audience**: Security team, Developers
 - **File**: `security-architecture.mmd`
 
@@ -141,5 +142,5 @@ All diagrams use [Mermaid](https://mermaid.js.org/) syntax, which provides:
 
 ---
 
-**Last Updated**: October 2025
+**Last Updated**: January 2026
 **Maintained By**: Konflux DevLake MCP Team

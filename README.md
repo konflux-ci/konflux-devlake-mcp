@@ -88,6 +88,30 @@ The server includes configurable timeout settings optimized for LLM connections:
 
 These high default values ensure that long-running LLM requests and complex database queries don't timeout prematurely.
 
+### OIDC Authentication (Red Hat SSO / Keycloak)
+
+The server supports OIDC authentication for securing MCP endpoints. When enabled, all requests to `/mcp` endpoints require a valid JWT token.
+
+| Environment Variable | Description | Default |
+|---------------------|-------------|---------|
+| `OIDC_ENABLED` | Enable OIDC authentication | `false` |
+| `OIDC_ISSUER_URL` | OIDC issuer URL (e.g., `https://sso.redhat.com/auth/realms/redhat-external`) | - |
+| `OIDC_CLIENT_ID` | OIDC client ID / audience | - |
+| `OIDC_REQUIRED_SCOPES` | Comma-separated list of required scopes | - |
+| `OIDC_JWKS_CACHE_TTL` | JWKS cache TTL in seconds | `3600` |
+| `OIDC_SKIP_PATHS` | Comma-separated paths to skip auth | `/health,/security` |
+| `OIDC_VERIFY_SSL` | Verify SSL certificates | `true` |
+
+**Example: Enable Red Hat SSO authentication**
+
+```bash
+export OIDC_ENABLED=true
+export OIDC_ISSUER_URL="https://sso.redhat.com/auth/realms/redhat-external"
+export OIDC_CLIENT_ID="cloud-services"
+```
+
+Clients must include the `Authorization: Bearer <token>` header with a valid JWT token obtained from the OIDC provider.
+
 ### Environment Variables (Alternative)
 
 ```bash
@@ -155,6 +179,7 @@ This server provides several specialized tools for working with your DevLake dat
 
 Your data security is our priority:
 
+- **OIDC Authentication**: Optional JWT-based authentication via Red Hat SSO / Keycloak
 - **SQL Injection Protection**: Automatic detection and prevention of potential SQL injection attacks
 - **Query Validation**: Every query is validated and sanitized before execution
 - **Data Masking**: Sensitive information is automatically masked in query results
