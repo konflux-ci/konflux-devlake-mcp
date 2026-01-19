@@ -4,7 +4,6 @@ from litellm import Message
 from ..e2e.utils import get_converted_tools, outcome_based_test
 from ..e2e.conftest import models
 
-
 pytestmark = pytest.mark.anyio
 
 
