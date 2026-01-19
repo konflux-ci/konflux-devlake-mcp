@@ -27,7 +27,10 @@ class TestConcurrentOperations:
         """Test multiple concurrent incident queries work correctly."""
         incident_tools = IncidentTools(integration_db_connection)
 
-        tasks = [incident_tools.call_tool("get_incidents", {}) for _ in range(5)]
+        tasks = [
+            incident_tools.call_tool("get_incidents", {"project_name": "Test_Project"})
+            for _ in range(5)
+        ]
 
         results = await asyncio.gather(*tasks)
 
@@ -62,10 +65,12 @@ class TestConcurrentOperations:
         db_tools = DatabaseTools(integration_db_connection)
 
         tasks = [
-            incident_tools.call_tool("get_incidents", {}),
+            incident_tools.call_tool("get_incidents", {"project_name": "Test_Project"}),
             deployment_tools.call_tool("get_deployments", {}),
             db_tools.call_tool("list_databases", {}),
-            incident_tools.call_tool("get_incidents", {"status": "DONE"}),
+            incident_tools.call_tool(
+                "get_incidents", {"project_name": "Test_Project", "status": "DONE"}
+            ),
             deployment_tools.call_tool("get_deployments", {"environment": "PRODUCTION"}),
         ]
 
@@ -94,7 +99,9 @@ class TestConcurrentOperations:
 
         results = []
         for _ in range(10):
-            result_json = await incident_tools.call_tool("get_incidents", {})
+            result_json = await incident_tools.call_tool(
+                "get_incidents", {"project_name": "Test_Project"}
+            )
             results.append(result_json)
 
         assert len(results) == 10
@@ -156,7 +163,8 @@ class TestErrorScenarios:
         incident_tools = IncidentTools(integration_db_connection)
 
         result_json = await incident_tools.call_tool(
-            "get_incidents", {"component": "nonexistent-component-xyz"}
+            "get_incidents",
+            {"project_name": "Test_Project", "component": "nonexistent-component-xyz"},
         )
         result = toon_decode(result_json)
 

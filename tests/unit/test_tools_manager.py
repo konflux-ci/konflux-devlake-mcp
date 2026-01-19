@@ -31,13 +31,21 @@ class TestKonfluxDevLakeToolsManager:
     def test_initialization(self, tools_manager, mock_db_connection):
         """Test tools manager initialization."""
         assert tools_manager.db_connection == mock_db_connection
-        assert len(tools_manager._tool_modules) == 4
+        assert len(tools_manager._tool_modules) == 12
 
         module_types = [type(module).__name__ for module in tools_manager._tool_modules]
         assert "DatabaseTools" in module_types
         assert "IncidentTools" in module_types
         assert "DeploymentTools" in module_types
         assert "PRRetestTools" in module_types
+        assert "PRCycleTimeTools" in module_types
+        assert "GitHubActionsTools" in module_types
+        assert "PRStatsTools" in module_types
+        assert "CodecovTools" in module_types
+        assert "E2ETestTools" in module_types
+        assert "HistoricalTrendsTools" in module_types
+        assert "JiraTools" in module_types
+        assert "LeadTimeTools" in module_types
 
     def test_tool_mapping_creation(self, tools_manager):
         """Test that tool mapping is created correctly."""
@@ -132,14 +140,15 @@ class TestKonfluxDevLakeToolsManager:
         assert "tools_by_module" in stats
         assert "available_tools" in stats
 
-        assert stats["modules"] == 4
-        assert stats["total_tools"] >= 7
+        assert stats["modules"] == 12
+        assert stats["total_tools"] >= 17
 
         tools_by_module = stats["tools_by_module"]
         assert "DatabaseTools" in tools_by_module
         assert "IncidentTools" in tools_by_module
         assert "DeploymentTools" in tools_by_module
         assert "PRRetestTools" in tools_by_module
+        assert "LeadTimeTools" in tools_by_module
 
         available_tools = stats["available_tools"]
         assert "connect_database" in available_tools
@@ -196,7 +205,7 @@ class TestKonfluxDevLakeToolsManager:
         tasks = [
             tools_manager.call_tool("connect_database", {}),
             tools_manager.call_tool("list_databases", {}),
-            tools_manager.call_tool("get_incidents", {}),
+            tools_manager.call_tool("get_incidents", {"project_name": "Test Project"}),
             tools_manager.call_tool("get_deployments", {}),
         ]
 
@@ -252,4 +261,4 @@ class TestKonfluxDevLakeToolsManager:
 
         assert module1 is module2 is module3
 
-        assert len(tools_manager._tool_modules) == 4
+        assert len(tools_manager._tool_modules) == 12

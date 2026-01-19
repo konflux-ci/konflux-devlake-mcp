@@ -6,7 +6,6 @@ Contains tools for analyzing pull requests that required manual retest commands
 (comments containing "/retest") with comprehensive statistics and insights.
 """
 
-from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 from mcp.types import Tool
@@ -50,11 +49,11 @@ class PRRetestTools(BaseTool):
                     "commands (comments containing '/retest'). Provides detailed statistics "
                     "including: total count of manual retest comments (excluding bot comments), "
                     "number of PRs affected, average retests per PR, top PRs with most retests "
-                    "(including PR title, URL, number of retests, PR duration, changes, and "
-                    "status), analysis of root causes and failure patterns, breakdown by PR "
-                    "category, timeline visualization data, and actionable recommendations. "
-                    "Focuses on technical patterns, systemic issues, and actionable insights "
-                    "without financial impacts or personal attribution."
+                    "(including repo name, PR title, URL, number of retests, PR duration, "
+                    "changes, and status), per-repository breakdown, weekly trend data, "
+                    "analysis of root causes and failure patterns, breakdown by PR category, "
+                    "and timeline visualization data. Focuses on technical patterns and "
+                    "systemic issues without financial impacts or personal attribution."
                 ),
                 inputSchema={
                     "type": "object",
@@ -152,9 +151,33 @@ class PRRetestTools(BaseTool):
             # Use TOON format for error responses as well
             return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
 
+    async def _get_repos_for_project(self, project_name: str) -> List[str]:
+        """
+        Get unique repository names for a project.
+        Uses DISTINCT on repo name to avoid duplicate ID issues.
+
+        Args:
+            project_name: DevLake project name
+
+        Returns:
+            List of unique repository names
+        """
+        query = f"""
+            SELECT DISTINCT r.name
+            FROM lake.repos r
+            INNER JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
+            WHERE pm.project_name = '{project_name}'
+        """
+        result = await self.db_connection.execute_query(query, 500)
+
+        if result["success"] and result["data"]:
+            return [row["name"] for row in result["data"]]
+        return []
+
     async def _analyze_pr_retests_tool(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
         Analyze PR retests with comprehensive statistics and insights.
+        Uses smart repo name resolution to avoid duplicate repo ID issues.
 
         Args:
             arguments: Tool arguments containing filters
@@ -171,7 +194,7 @@ class PRRetestTools(BaseTool):
             top_n = min(arguments.get("top_n", 15), 50)  # Cap at 50
             exclude_bots = arguments.get("exclude_bots", True)
 
-            # Build date filter
+            # Build date filter (uses prc.created_date - comment date, not PR creation date)
             date_filter = ""
             if start_date or end_date:
                 if start_date:
@@ -184,93 +207,73 @@ class PRRetestTools(BaseTool):
                         end_date = f"{end_date} 23:59:59"
                     date_filter += f" AND prc.created_date <= '{end_date}'"
             elif days_back > 0:
-                start_date_calc = datetime.now() - timedelta(days=days_back)
-                start_date_str = start_date_calc.strftime("%Y-%m-%d %H:%M:%S")
-                date_filter = f" AND prc.created_date >= '{start_date_str}'"
+                date_filter = f" AND prc.created_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)"
 
-            # Build project filter for main queries (uses pm alias)
-            project_filter = ""
+            # SMART REPO RESOLUTION: Convert project_name to repo names
+            # This avoids issues with duplicate repo IDs in project_mapping
+            target_repos = []
+
             if project_name:
-                project_filter = f" AND pm.project_name = '{project_name}'"
+                # Get repo names for this project
+                target_repos = await self._get_repos_for_project(project_name)
+                self.logger.info(f"Project '{project_name}' has repos: {target_repos}")
 
-            # Build project filter for subqueries (uses pm2 alias)
-            project_filter_subquery = ""
-            if project_name:
-                project_filter_subquery = f" AND pm2.project_name = '{project_name}'"
-
-            # Build repository filter
-            repo_filter = ""
             if repo_name:
-                repo_filter = (
-                    f" AND (r.name LIKE '%{repo_name}%' OR r.url LIKE '%{repo_name}%' "
-                    f"OR pr.url LIKE '%{repo_name}%')"
-                )
+                # Add/filter by specific repo name
+                if target_repos:
+                    # Filter existing repos by repo_name pattern
+                    target_repos = [r for r in target_repos if repo_name.lower() in r.lower()]
+                else:
+                    # No project filter, use repo_name as pattern
+                    target_repos = None  # Will use LIKE pattern
+
+            # Build repo filter SQL (by NAME, not by project_mapping JOIN)
+            repo_filter = ""
+            if target_repos:
+                repo_names_sql = ", ".join([f"'{r}'" for r in target_repos])
+                repo_filter = f" AND r.name IN ({repo_names_sql})"
+            elif repo_name:
+                repo_filter = f" AND r.name LIKE '%{repo_name}%'"
 
             # Build bot exclusion filter
+            # 1. Exclude known bot account
+            # 2. Filter by comment length (real /retest commands are short, < 20 chars)
+            #    This excludes bot messages like "say **/retest** to rerun failed tests"
             bot_filter = ""
             if exclude_bots:
-                # Exclude only known bot account patterns
-                # Note: We only exclude account_id = 0 (known bot pattern)
-                # We include NULL/empty account_id as they might be legitimate retest comments
-                # that haven't been properly attributed yet
                 bot_filter = """
                     AND prc.account_id != 'github:GithubAccount:1:0'
+                    AND LENGTH(TRIM(prc.body)) < 20
                 """
 
-            # Step 1: Get total count of manual /retest comments
-            # Match exact "/retest" comments only (not partial matches)
-            # Handle cases where body may be stored with quotes: "/retest" or '/retest'
-            total_retests_query = f"""
-                SELECT COUNT(*) as total_retests
+            # Step 1: Get total count and affected PRs in one query
+            total_query = f"""
+                SELECT
+                    COUNT(DISTINCT prc.id) as total_retests,
+                    COUNT(DISTINCT pr.id) as affected_prs
                 FROM lake.pull_request_comments prc
                 INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                LEFT JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
                 WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
                     AND prc.body IS NOT NULL
                     AND prc.body != ''
-                    {project_filter}
                     {repo_filter}
                     {date_filter}
                     {bot_filter}
             """
 
-            total_result = await self.db_connection.execute_query(total_retests_query, 1)
-            # Convert MySQL numeric types (Decimal/string) to int
-            total_retests = (
-                int(float(total_result["data"][0]["total_retests"]))
-                if total_result["success"] and total_result["data"]
-                else 0
-            )
+            total_result = await self.db_connection.execute_query(total_query, 1)
+            if total_result["success"] and total_result["data"]:
+                total_retests = int(float(total_result["data"][0]["total_retests"] or 0))
+                affected_prs = int(float(total_result["data"][0]["affected_prs"] or 0))
+            else:
+                total_retests = 0
+                affected_prs = 0
 
-            # Step 2: Get number of PRs affected
-            affected_prs_query = f"""
-                SELECT COUNT(DISTINCT prc.pull_request_id) as affected_prs
-                FROM lake.pull_request_comments prc
-                INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
-                INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                LEFT JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
-                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
-                    AND prc.body IS NOT NULL
-                    AND prc.body != ''
-                    {project_filter}
-                    {repo_filter}
-                    {date_filter}
-                    {bot_filter}
-            """
-
-            affected_result = await self.db_connection.execute_query(affected_prs_query, 1)
-            # Convert MySQL numeric types (Decimal/string) to int
-            affected_prs = (
-                int(float(affected_result["data"][0]["affected_prs"]))
-                if affected_result["success"] and affected_result["data"]
-                else 0
-            )
-
-            # Step 3: Calculate average retests per PR
+            # Calculate average retests per PR
             avg_retests = round(total_retests / affected_prs, 2) if affected_prs > 0 else 0
 
-            # Step 4: Get top PRs with most retests
+            # Step 2: Get top PRs with most retests
             top_prs_query = f"""
                 SELECT
                     pr.id as pr_id,
@@ -282,7 +285,8 @@ class PRRetestTools(BaseTool):
                     pr.closed_date,
                     pr.additions,
                     pr.deletions,
-                    COUNT(prc.id) as retest_count,
+                    r.name as repo_name,
+                    COUNT(DISTINCT prc.id) as retest_count,
                     DATEDIFF(
                         COALESCE(pr.merged_date, pr.closed_date, NOW()),
                         pr.created_date
@@ -290,16 +294,14 @@ class PRRetestTools(BaseTool):
                 FROM lake.pull_request_comments prc
                 INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                LEFT JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
                 WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
                     AND prc.body IS NOT NULL
                     AND prc.body != ''
-                    {project_filter}
                     {repo_filter}
                     {date_filter}
                     {bot_filter}
                 GROUP BY pr.id, pr.title, pr.url, pr.status, pr.created_date,
-                         pr.merged_date, pr.closed_date, pr.additions, pr.deletions
+                         pr.merged_date, pr.closed_date, pr.additions, pr.deletions, r.name
                 ORDER BY retest_count DESC
                 LIMIT {top_n}
             """
@@ -307,19 +309,17 @@ class PRRetestTools(BaseTool):
             top_prs_result = await self.db_connection.execute_query(top_prs_query, top_n)
             top_prs = top_prs_result["data"] if top_prs_result["success"] else []
 
-            # Step 5: Get timeline data for visualization
+            # Step 3: Get timeline data for visualization
             timeline_query = f"""
                 SELECT
                     DATE(prc.created_date) as date,
-                    COUNT(*) as retest_count
+                    COUNT(DISTINCT prc.id) as retest_count
                 FROM lake.pull_request_comments prc
                 INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                LEFT JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
                 WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
                     AND prc.body IS NOT NULL
                     AND prc.body != ''
-                    {project_filter}
                     {repo_filter}
                     {date_filter}
                     {bot_filter}
@@ -330,7 +330,7 @@ class PRRetestTools(BaseTool):
             timeline_result = await self.db_connection.execute_query(timeline_query, 1000)
             timeline_data = timeline_result["data"] if timeline_result["success"] else []
 
-            # Step 6: Get breakdown by PR category (based on title keywords)
+            # Step 4: Get breakdown by PR category (based on title keywords)
             category_query = f"""
                 SELECT
                     CASE
@@ -347,28 +347,16 @@ class PRRetestTools(BaseTool):
                         ELSE 'Other'
                     END as category,
                     COUNT(DISTINCT pr.id) as pr_count,
-                    SUM(retest_counts.retest_count) as total_retests
-                FROM (
-                    SELECT
-                        prc.pull_request_id,
-                        COUNT(*) as retest_count
-                    FROM lake.pull_request_comments prc
-                    INNER JOIN lake.pull_requests pr2 ON prc.pull_request_id = pr2.id
-                    INNER JOIN lake.repos r2 ON pr2.base_repo_id = r2.id
-                    LEFT JOIN lake.project_mapping pm2
-                        ON r2.id = pm2.row_id AND pm2.`table` = 'repos'
-                    WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
-                        AND prc.body IS NOT NULL
-                        AND prc.body != ''
-                        {project_filter_subquery}
-                        {date_filter}
-                        {bot_filter}
-                    GROUP BY prc.pull_request_id
-                ) retest_counts
-                INNER JOIN lake.pull_requests pr ON retest_counts.pull_request_id = pr.id
+                    COUNT(DISTINCT prc.id) as total_retests
+                FROM lake.pull_request_comments prc
+                INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                LEFT JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
-                WHERE 1=1 {project_filter} {repo_filter}
+                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
+                    AND prc.body IS NOT NULL
+                    AND prc.body != ''
+                    {repo_filter}
+                    {date_filter}
+                    {bot_filter}
                 GROUP BY category
                 ORDER BY total_retests DESC
             """
@@ -376,39 +364,27 @@ class PRRetestTools(BaseTool):
             category_result = await self.db_connection.execute_query(category_query, 20)
             category_breakdown = category_result["data"] if category_result["success"] else []
 
-            # Step 7: Analyze root causes and patterns
-            # Get PRs with high retest counts and their characteristics
+            # Step 5: Analyze root causes and patterns by PR status
             pattern_query = f"""
                 SELECT
                     pr.status,
-                    AVG(retest_counts.retest_count) as avg_retests,
                     COUNT(DISTINCT pr.id) as pr_count,
-                    AVG(pr.additions + pr.deletions) as avg_changes,
-                    AVG(DATEDIFF(
+                    COUNT(DISTINCT prc.id) as total_retests,
+                    ROUND(COUNT(DISTINCT prc.id) * 1.0 / COUNT(DISTINCT pr.id), 2) as avg_retests,
+                    ROUND(AVG(pr.additions + pr.deletions), 0) as avg_changes,
+                    ROUND(AVG(DATEDIFF(
                         COALESCE(pr.merged_date, pr.closed_date, NOW()),
                         pr.created_date
-                    )) as avg_duration_days
-                FROM (
-                    SELECT
-                        prc.pull_request_id,
-                        COUNT(*) as retest_count
-                    FROM lake.pull_request_comments prc
-                    INNER JOIN lake.pull_requests pr2 ON prc.pull_request_id = pr2.id
-                    INNER JOIN lake.repos r2 ON pr2.base_repo_id = r2.id
-                    LEFT JOIN lake.project_mapping pm2
-                        ON r2.id = pm2.row_id AND pm2.`table` = 'repos'
-                    WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
-                        AND prc.body IS NOT NULL
-                        AND prc.body != ''
-                        {project_filter_subquery}
-                        {date_filter}
-                        {bot_filter}
-                    GROUP BY prc.pull_request_id
-                ) retest_counts
-                INNER JOIN lake.pull_requests pr ON retest_counts.pull_request_id = pr.id
+                    )), 1) as avg_duration_days
+                FROM lake.pull_request_comments prc
+                INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                LEFT JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
-                WHERE 1=1 {project_filter} {repo_filter}
+                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
+                    AND prc.body IS NOT NULL
+                    AND prc.body != ''
+                    {repo_filter}
+                    {date_filter}
+                    {bot_filter}
                 GROUP BY pr.status
                 ORDER BY avg_retests DESC
             """
@@ -416,13 +392,65 @@ class PRRetestTools(BaseTool):
             pattern_result = await self.db_connection.execute_query(pattern_query, 10)
             pattern_analysis = pattern_result["data"] if pattern_result["success"] else []
 
+            # Step 6: Get per-repository breakdown
+            repo_breakdown_query = f"""
+                SELECT
+                    r.name as repo_name,
+                    COUNT(DISTINCT prc.id) as total_retests,
+                    COUNT(DISTINCT pr.id) as affected_prs,
+                    ROUND(COUNT(DISTINCT prc.id) * 1.0 / COUNT(DISTINCT pr.id), 2)
+                        as avg_retests_per_pr
+                FROM lake.pull_request_comments prc
+                INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
+                INNER JOIN lake.repos r ON pr.base_repo_id = r.id
+                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
+                    AND prc.body IS NOT NULL
+                    AND prc.body != ''
+                    {repo_filter}
+                    {date_filter}
+                    {bot_filter}
+                GROUP BY r.name
+                ORDER BY total_retests DESC
+            """
+
+            repo_breakdown_result = await self.db_connection.execute_query(
+                repo_breakdown_query, 100
+            )
+            repo_breakdown = (
+                repo_breakdown_result["data"] if repo_breakdown_result["success"] else []
+            )
+
+            # Step 7: Get weekly trend
+            weekly_trend_query = f"""
+                SELECT
+                    YEARWEEK(prc.created_date, 1) as week,
+                    MIN(DATE(prc.created_date)) as week_start,
+                    COUNT(DISTINCT prc.id) as retest_count,
+                    COUNT(DISTINCT pr.id) as affected_prs
+                FROM lake.pull_request_comments prc
+                INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
+                INNER JOIN lake.repos r ON pr.base_repo_id = r.id
+                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
+                    AND prc.body IS NOT NULL
+                    AND prc.body != ''
+                    {repo_filter}
+                    {date_filter}
+                    {bot_filter}
+                GROUP BY YEARWEEK(prc.created_date, 1)
+                ORDER BY week DESC
+                LIMIT 12
+            """
+
+            weekly_trend_result = await self.db_connection.execute_query(weekly_trend_query, 12)
+            weekly_trend = weekly_trend_result["data"] if weekly_trend_result["success"] else []
+
             # Format top PRs for better readability
-            # Convert MySQL numeric types (Decimal/string) to proper Python types
             formatted_top_prs = []
             for pr in top_prs:
                 additions = int(float(pr.get("additions", 0) or 0))
                 deletions = int(float(pr.get("deletions", 0) or 0))
                 formatted_pr = {
+                    "repo_name": pr.get("repo_name", "N/A"),
                     "pr_title": pr.get("title", "N/A"),
                     "pr_url": pr.get("url", "N/A"),
                     "retest_count": int(float(pr.get("retest_count", 0) or 0)),
@@ -433,32 +461,23 @@ class PRRetestTools(BaseTool):
                         "total": additions + deletions,
                     },
                     "status": pr.get("status", "UNKNOWN"),
-                    "created_date": pr.get("created_date"),
-                    "merged_date": pr.get("merged_date"),
-                    "closed_date": pr.get("closed_date"),
+                    "created_date": str(pr.get("created_date")) if pr.get("created_date") else None,
+                    "merged_date": str(pr.get("merged_date")) if pr.get("merged_date") else None,
+                    "closed_date": str(pr.get("closed_date")) if pr.get("closed_date") else None,
                 }
                 formatted_top_prs.append(formatted_pr)
-
-            # Generate recommendations based on patterns
-            recommendations = self._generate_recommendations(
-                total_retests,
-                affected_prs,
-                avg_retests,
-                category_breakdown,
-                pattern_analysis,
-                top_prs,
-            )
 
             return {
                 "success": True,
                 "analysis_period": {
-                    "start_date": start_date if start_date else "all_available",
-                    "end_date": end_date if end_date else "all_available",
+                    "start_date": start_date if start_date else "auto",
+                    "end_date": end_date if end_date else "now",
                     "days_back": days_back if days_back > 0 else "all",
                 },
                 "filters": {
                     "repo_name": repo_name if repo_name else "all_repositories",
                     "project_name": project_name if project_name else "all_projects",
+                    "resolved_repos": target_repos if target_repos else "all",
                     "exclude_bots": exclude_bots,
                 },
                 "executive_summary": {
@@ -469,6 +488,8 @@ class PRRetestTools(BaseTool):
                         f"{days_back} days" if days_back > 0 else "all available data"
                     ),
                 },
+                "repo_breakdown": repo_breakdown,
+                "weekly_trend": weekly_trend,
                 "top_prs_by_retests": formatted_top_prs,
                 "category_breakdown": category_breakdown,
                 "timeline_data": timeline_data,
@@ -476,140 +497,11 @@ class PRRetestTools(BaseTool):
                     "by_status": pattern_analysis,
                     "insights": self._analyze_patterns(pattern_analysis, category_breakdown),
                 },
-                "recommendations": recommendations,
             }
 
         except Exception as e:
             self.logger.error(f"Analyze PR retests failed: {e}")
             return {"success": False, "error": str(e)}
-
-    def _generate_recommendations(
-        self,
-        total_retests: int,
-        affected_prs: int,
-        avg_retests: float,
-        category_breakdown: List[Dict],
-        pattern_analysis: List[Dict],
-        top_prs: List[Dict],
-    ) -> List[Dict[str, Any]]:
-        """
-        Generate actionable recommendations based on analysis.
-
-        Args:
-            total_retests: Total number of retest comments
-            affected_prs: Number of PRs affected
-            avg_retests: Average retests per PR
-            category_breakdown: Breakdown by PR category
-            pattern_analysis: Pattern analysis data
-            top_prs: Top PRs with most retests
-
-        Returns:
-            List of recommendation dictionaries
-        """
-        recommendations = []
-
-        # High retest frequency recommendations
-        if avg_retests > 3:
-            recommendations.append(
-                {
-                    "priority": "high",
-                    "category": "CI/CD Reliability",
-                    "issue": f"High average retest frequency ({avg_retests:.2f} retests per PR)",
-                    "recommendation": (
-                        "Investigate CI/CD pipeline stability. Consider: "
-                        "1) Reviewing flaky test patterns, "
-                        "2) Improving test environment reliability, "
-                        "3) Implementing automatic retry mechanisms for transient failures"
-                    ),
-                    "impact": "Reduces developer friction and speeds up PR review cycles",
-                }
-            )
-
-        # Category-specific recommendations
-        if category_breakdown:
-            max_category = max(
-                category_breakdown, key=lambda x: float(x.get("total_retests", 0) or 0)
-            )
-            max_retests = float(max_category.get("total_retests", 0) or 0)
-            if max_retests > total_retests * 0.3:  # More than 30% of retests
-                recommendations.append(
-                    {
-                        "priority": "medium",
-                        "category": "Category-Specific Issues",
-                        "issue": (
-                            f"'{max_category.get('category')}' category accounts for "
-                            f"{int(max_retests)} retests"
-                        ),
-                        "recommendation": (
-                            f"Focus improvement efforts on {max_category.get('category')} PRs. "
-                            "Review common failure patterns in this category and optimize "
-                            "test suites accordingly."
-                        ),
-                        "impact": "Targeted improvement for highest-impact category",
-                    }
-                )
-
-        # Status-based recommendations
-        if pattern_analysis:
-            merged_prs = [p for p in pattern_analysis if p.get("status") == "MERGED"]
-            if merged_prs:
-                avg_retests_val = float(merged_prs[0].get("avg_retests", 0) or 0)
-                if avg_retests_val > 2:
-                    recommendations.append(
-                        {
-                            "priority": "medium",
-                            "category": "Pre-merge Testing",
-                            "issue": "Merged PRs still require multiple retests",
-                            "recommendation": (
-                                "Strengthen pre-merge test coverage and ensure all critical "
-                                "paths are tested before merge approval. Consider implementing "
-                                "mandatory test passes before allowing merge."
-                            ),
-                            "impact": "Reduces post-merge issues and improves code quality",
-                        }
-                    )
-
-        # Large change recommendations
-        if top_prs:
-            large_change_prs = [
-                pr
-                for pr in top_prs
-                if ((pr.get("additions", 0) or 0) + (pr.get("deletions", 0) or 0) > 1000)
-            ]
-            if large_change_prs:
-                recommendations.append(
-                    {
-                        "priority": "low",
-                        "category": "PR Size Management",
-                        "issue": (
-                            f"{len(large_change_prs)} PRs with >1000 lines changed "
-                            "have high retest counts"
-                        ),
-                        "recommendation": (
-                            "Consider breaking large PRs into smaller, more manageable "
-                            "chunks. Smaller PRs are easier to test and review, reducing "
-                            "retest frequency."
-                        ),
-                        "impact": "Improves review quality and reduces test complexity",
-                    }
-                )
-
-        # General recommendations if no specific issues found
-        if not recommendations:
-            recommendations.append(
-                {
-                    "priority": "low",
-                    "category": "Continuous Improvement",
-                    "issue": "Retest frequency is within acceptable range",
-                    "recommendation": (
-                        "Continue monitoring retest patterns. Consider implementing "
-                        "automated test retry mechanisms for known flaky tests."
-                    ),
-                    "impact": "Maintains current quality levels while reducing manual intervention",
-                }
-            )
-
-        return recommendations
 
     def _analyze_patterns(
         self, pattern_analysis: List[Dict], category_breakdown: List[Dict]
