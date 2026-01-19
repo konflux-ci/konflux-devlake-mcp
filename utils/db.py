@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Konflux DevLake MCP Server - Database Connection Utility
+Konflux DevLake MCP Server - Database Connection Utility.
 
 This module provides robust database connection management with:
 - Async connection pooling for concurrent request handling

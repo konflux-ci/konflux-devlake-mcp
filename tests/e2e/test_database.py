@@ -1,3 +1,5 @@
+"""E2E tests for database operations using LLM-driven tool calls."""
+
 import pytest
 import json
 from litellm import Message

@@ -1,3 +1,5 @@
+"""E2E tests for incident operations using LLM-driven tool calls."""
+
 import pytest
 from litellm import Message
 
