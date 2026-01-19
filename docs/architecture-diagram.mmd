@@ -3,10 +3,19 @@ graph TB
         USER[User/AI Assistant]
     end
 
+    subgraph "External Services"
+        SSO[Red Hat SSO<br/>Keycloak]
+    end
+
     subgraph "MCP Server"
         subgraph "Transport Layer"
             HTTP[HTTP Transport<br/>Production]
             STDIO[STDIO Transport<br/>Development]
+        end
+
+        subgraph "Auth Middleware"
+            OIDC[OIDC Authenticator<br/>JWT Validation]
+            OFFLINE[Offline Token<br/>Exchange]
         end
 
         subgraph "Core Server"
@@ -36,9 +45,14 @@ graph TB
         MYSQL[(MySQL Database<br/>Konflux DevLake Data)]
     end
 
-    USER -->|Natural Language Query| HTTP
+    USER -->|Token + Query| HTTP
     USER -->|Debugging| STDIO
-    HTTP --> MCP
+    HTTP --> OIDC
+    OIDC -->|Validate Token| SSO
+    OIDC -->|Offline Token| OFFLINE
+    OFFLINE -->|Exchange| SSO
+    SSO -->|Access Token| OFFLINE
+    OIDC --> MCP
     STDIO --> MCP
     MCP --> HANDLER
     HANDLER --> TM
@@ -62,3 +76,5 @@ graph TB
     style TM fill:#e8f5e9
     style SEC fill:#ffebee
     style MYSQL fill:#f3e5f5
+    style SSO fill:#fff3e0
+    style OIDC fill:#e3f2fd

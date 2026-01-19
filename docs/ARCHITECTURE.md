@@ -486,9 +486,27 @@ class OIDCConfig:
     jwks_cache_ttl: int = 3600
     skip_paths: List[str] = ["/health", "/security"]
     verify_ssl: bool = True
+    # Offline token support
+    offline_token_enabled: bool = False
+    token_exchange_client_id: str = ""
+    access_token_cache_buffer: int = 60
 ```
 
 #### Authentication Flow
+
+The server supports two authentication modes:
+
+**Mode 1: Access Token (default)**
+- Client obtains JWT access token from OIDC provider
+- Client sends access token in Authorization header
+- Server validates JWT directly
+
+**Mode 2: Offline Token (when `offline_token_enabled=True`)**
+- Client sends offline/refresh token in Authorization header
+- Server detects non-JWT token format
+- Server exchanges offline token for access token via OIDC provider
+- Server caches access token and refreshes when needed
+- Server validates the access token
 
 ```
 Client Request
@@ -528,6 +546,9 @@ Client Request
 | `OIDC_JWKS_CACHE_TTL` | JWKS cache TTL in seconds |
 | `OIDC_SKIP_PATHS` | Comma-separated paths to skip auth |
 | `OIDC_VERIFY_SSL` | Verify SSL certificates |
+| `OIDC_OFFLINE_TOKEN_ENABLED` | Accept offline tokens (`true`/`false`) |
+| `OIDC_TOKEN_EXCHANGE_CLIENT_ID` | Client ID for token exchange |
+| `OIDC_ACCESS_TOKEN_CACHE_BUFFER` | Seconds before expiry to refresh token |
 
 ---
 

@@ -5,7 +5,7 @@ Unit Tests for OIDC Authentication Module
 Tests for server/middleware/oidc_auth.py
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from server.middleware.oidc_auth import (
@@ -50,6 +50,29 @@ class TestOIDCConfig:
         assert config.jwks_cache_ttl == 1800
         assert config.skip_paths == ["/health", "/metrics"]
         assert config.verify_ssl is False
+
+    def test_offline_token_defaults(self):
+        """Test offline token default values."""
+        config = OIDCConfig()
+
+        assert config.offline_token_enabled is False
+        assert config.token_exchange_client_id == ""
+        assert config.access_token_cache_buffer == 60
+
+    def test_offline_token_custom_values(self):
+        """Test offline token custom values."""
+        config = OIDCConfig(
+            enabled=True,
+            issuer_url="https://sso.example.com/realms/test",
+            client_id="mcp-server",
+            offline_token_enabled=True,
+            token_exchange_client_id="cloud-services",
+            access_token_cache_buffer=30,
+        )
+
+        assert config.offline_token_enabled is True
+        assert config.token_exchange_client_id == "cloud-services"
+        assert config.access_token_cache_buffer == 30
 
 
 class TestAuthResult:
@@ -302,9 +325,7 @@ class TestOIDCAuthenticatorTokenValidation:
 
         with patch.object(auth, "_fetch_jwks", return_value=mock_jwks):
             with patch.object(auth, "_get_signing_key_from_jwt", return_value="test-key"):
-                with patch(
-                    "jwt.decode", side_effect=jwt.InvalidAudienceError("Invalid audience")
-                ):
+                with patch("jwt.decode", side_effect=jwt.InvalidAudienceError("Invalid audience")):
                     result = await auth.validate_token("invalid.audience.token")
 
         assert result.authenticated is False
@@ -430,3 +451,245 @@ class TestOIDCAuthenticatorTokenValidation:
 
         assert result.authenticated is True
         assert result.groups == ["user", "admin"]
+
+
+class TestOfflineTokenSupport:
+    """Tests for offline token (refresh token) support."""
+
+    def test_hash_token(self):
+        """Test token hashing for cache keys."""
+        config = OIDCConfig()
+        auth = OIDCAuthenticator(config)
+
+        hash1 = auth._hash_token("token1")
+        hash2 = auth._hash_token("token1")
+        hash3 = auth._hash_token("token2")
+
+        # Same token should produce same hash
+        assert hash1 == hash2
+        # Different tokens should produce different hashes
+        assert hash1 != hash3
+        # Hash should be a hex string
+        assert len(hash1) == 64  # SHA256 produces 64 hex characters
+
+    def test_is_access_token_with_bearer_type(self):
+        """Test access token detection with Bearer type."""
+        config = OIDCConfig()
+        auth = OIDCAuthenticator(config)
+
+        # Access tokens have typ="Bearer" or "JWT"
+        with patch("jwt.get_unverified_header", return_value={"alg": "RS256", "typ": "Bearer"}):
+            result = auth._is_access_token("eyJhbGc.eyJzdWI.signature")
+
+        assert result is True
+
+    def test_is_access_token_with_jwt_type(self):
+        """Test access token detection with JWT type."""
+        config = OIDCConfig()
+        auth = OIDCAuthenticator(config)
+
+        with patch("jwt.get_unverified_header", return_value={"alg": "RS256", "typ": "JWT"}):
+            result = auth._is_access_token("eyJhbGc.eyJzdWI.signature")
+
+        assert result is True
+
+    def test_is_access_token_with_refresh_type(self):
+        """Test refresh token detection with Refresh type."""
+        config = OIDCConfig()
+        auth = OIDCAuthenticator(config)
+
+        # Refresh tokens have typ="Refresh"
+        with patch("jwt.get_unverified_header", return_value={"alg": "RS256", "typ": "Refresh"}):
+            result = auth._is_access_token("eyJhbGc.eyJzdWI.signature")
+
+        assert result is False
+
+    def test_is_access_token_with_opaque_token(self):
+        """Test detection with an opaque token (no dots)."""
+        config = OIDCConfig()
+        auth = OIDCAuthenticator(config)
+
+        # Opaque tokens don't have JWT structure
+        result = auth._is_access_token("offline-token-opaque-string-no-dots")
+
+        assert result is False
+
+    def test_is_access_token_with_malformed_jwt(self):
+        """Test detection with malformed JWT."""
+        import jwt
+
+        config = OIDCConfig()
+        auth = OIDCAuthenticator(config)
+
+        # Has three parts but not decodable
+        with patch("jwt.get_unverified_header", side_effect=jwt.exceptions.DecodeError("Bad")):
+            result = auth._is_access_token("not.a.jwt")
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_exchange_offline_token_success(self):
+        """Test successful offline token exchange."""
+        config = OIDCConfig(
+            enabled=True,
+            issuer_url="https://sso.example.com/realms/test",
+            client_id="mcp-server",
+            offline_token_enabled=True,
+        )
+        auth = OIDCAuthenticator(config)
+
+        # Mock OIDC configuration
+        mock_oidc_config = {
+            "issuer": "https://sso.example.com/realms/test",
+            "token_endpoint": "https://sso.example.com/realms/test/protocol/openid-connect/token",
+        }
+
+        # Mock successful token exchange response
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "access_token": "new-access-token",
+            "expires_in": 600,
+            "token_type": "Bearer",
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        with patch.object(auth, "_fetch_oidc_configuration", return_value=mock_oidc_config):
+            with patch.object(auth, "_get_http_client", return_value=mock_client):
+                access_token, expires_in = await auth._exchange_offline_token("offline-token")
+
+        assert access_token == "new-access-token"
+        assert expires_in == 600
+
+    @pytest.mark.asyncio
+    async def test_exchange_offline_token_with_custom_client_id(self):
+        """Test offline token exchange with custom token_exchange_client_id."""
+        config = OIDCConfig(
+            enabled=True,
+            issuer_url="https://sso.example.com/realms/test",
+            client_id="mcp-server",
+            offline_token_enabled=True,
+            token_exchange_client_id="cloud-services",
+        )
+        auth = OIDCAuthenticator(config)
+
+        mock_oidc_config = {
+            "token_endpoint": "https://sso.example.com/realms/test/protocol/openid-connect/token",
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "access_token": "new-access-token",
+            "expires_in": 600,
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        with patch.object(auth, "_fetch_oidc_configuration", return_value=mock_oidc_config):
+            with patch.object(auth, "_get_http_client", return_value=mock_client):
+                await auth._exchange_offline_token("offline-token")
+
+        # Verify the correct client_id was used
+        call_args = mock_client.post.call_args
+        assert call_args[1]["data"]["client_id"] == "cloud-services"
+
+    @pytest.mark.asyncio
+    async def test_get_access_token_from_offline_caching(self):
+        """Test that access tokens are cached correctly."""
+        config = OIDCConfig(
+            enabled=True,
+            issuer_url="https://sso.example.com/realms/test",
+            client_id="mcp-server",
+            offline_token_enabled=True,
+            access_token_cache_buffer=60,
+        )
+        auth = OIDCAuthenticator(config)
+
+        # First call should exchange the token
+        with patch.object(
+            auth, "_exchange_offline_token", return_value=("access-token-1", 600)
+        ) as mock_exchange:
+            token1 = await auth._get_access_token_from_offline("offline-token")
+
+            assert token1 == "access-token-1"
+            assert mock_exchange.call_count == 1
+
+            # Second call with same offline token should use cache
+            token2 = await auth._get_access_token_from_offline("offline-token")
+
+            assert token2 == "access-token-1"
+            assert mock_exchange.call_count == 1  # Not called again
+
+    @pytest.mark.asyncio
+    async def test_authenticate_request_with_offline_token(self):
+        """Test authenticate_request with offline token when enabled."""
+        config = OIDCConfig(
+            enabled=True,
+            issuer_url="https://sso.example.com/realms/test",
+            client_id="mcp-server",
+            offline_token_enabled=True,
+        )
+        auth = OIDCAuthenticator(config)
+
+        with patch.object(auth, "_is_access_token", return_value=False):
+            with patch.object(auth, "_get_access_token_from_offline", return_value="access-token"):
+                with patch.object(
+                    auth,
+                    "validate_token",
+                    return_value=AuthResult(
+                        authenticated=True,
+                        user_id="user-123",
+                        username="testuser",
+                        status_code=200,
+                    ),
+                ) as mock_validate:
+                    result = await auth.authenticate_request("Bearer offline-token")
+
+        assert result.authenticated is True
+        assert result.user_id == "user-123"
+        mock_validate.assert_called_once_with("access-token")
+
+    @pytest.mark.asyncio
+    async def test_authenticate_request_offline_token_disabled(self):
+        """Test that non-JWT tokens are rejected when offline_token_enabled is False."""
+        config = OIDCConfig(
+            enabled=True,
+            issuer_url="https://sso.example.com/realms/test",
+            client_id="mcp-server",
+            offline_token_enabled=False,  # Disabled
+        )
+        auth = OIDCAuthenticator(config)
+
+        with patch.object(auth, "_is_access_token", return_value=False):
+            result = await auth.authenticate_request("Bearer offline-token")
+
+        assert result.authenticated is False
+        assert "Invalid token format" in result.error
+        assert result.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_authenticate_request_offline_token_exchange_failure(self):
+        """Test handling of offline token exchange failure."""
+        config = OIDCConfig(
+            enabled=True,
+            issuer_url="https://sso.example.com/realms/test",
+            client_id="mcp-server",
+            offline_token_enabled=True,
+        )
+        auth = OIDCAuthenticator(config)
+
+        with patch.object(auth, "_is_access_token", return_value=False):
+            with patch.object(
+                auth,
+                "_get_access_token_from_offline",
+                side_effect=RuntimeError("Token exchange failed: 401"),
+            ):
+                result = await auth.authenticate_request("Bearer bad-offline-token")
+
+        assert result.authenticated is False
+        assert "Token exchange failed" in result.error
+        assert result.status_code == 401

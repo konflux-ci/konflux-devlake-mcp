@@ -76,6 +76,9 @@ class OIDCConfig:
         jwks_cache_ttl=3600,
         skip_paths=None,
         verify_ssl=True,
+        offline_token_enabled=False,
+        token_exchange_client_id="",
+        access_token_cache_buffer=60,
     ):
         self.enabled = enabled
         self.issuer_url = issuer_url
@@ -84,6 +87,10 @@ class OIDCConfig:
         self.jwks_cache_ttl = jwks_cache_ttl
         self.skip_paths = skip_paths or ["/health", "/security"]
         self.verify_ssl = verify_ssl
+        # Offline token support: accept refresh tokens and exchange for access tokens
+        self.offline_token_enabled = offline_token_enabled
+        self.token_exchange_client_id = token_exchange_client_id
+        self.access_token_cache_buffer = access_token_cache_buffer
 
 
 class KonfluxDevLakeConfig:
@@ -154,6 +161,16 @@ class KonfluxDevLakeConfig:
         if skip_paths:
             self.oidc.skip_paths = [s.strip() for s in skip_paths.split(",")]
         self.oidc.verify_ssl = os.getenv("OIDC_VERIFY_SSL", "true").lower() == "true"
+        # Offline token support
+        self.oidc.offline_token_enabled = (
+            os.getenv("OIDC_OFFLINE_TOKEN_ENABLED", "false").lower() == "true"
+        )
+        self.oidc.token_exchange_client_id = os.getenv(
+            "OIDC_TOKEN_EXCHANGE_CLIENT_ID", self.oidc.token_exchange_client_id
+        )
+        self.oidc.access_token_cache_buffer = int(
+            os.getenv("OIDC_ACCESS_TOKEN_CACHE_BUFFER", str(self.oidc.access_token_cache_buffer))
+        )
 
     def get_database_config(self) -> dict:
         """Get database configuration as dictionary"""
@@ -189,6 +206,9 @@ class KonfluxDevLakeConfig:
             "jwks_cache_ttl": self.oidc.jwks_cache_ttl,
             "skip_paths": self.oidc.skip_paths,
             "verify_ssl": self.oidc.verify_ssl,
+            "offline_token_enabled": self.oidc.offline_token_enabled,
+            "token_exchange_client_id": self.oidc.token_exchange_client_id,
+            "access_token_cache_buffer": self.oidc.access_token_cache_buffer,
         }
 
     def validate(self) -> bool:
@@ -222,4 +242,5 @@ Konflux DevLake MCP Server Configuration:
     Enabled: {self.oidc.enabled}
     Issuer URL: {self.oidc.issuer_url}
     Client ID: {self.oidc.client_id}
+    Offline Token Enabled: {self.oidc.offline_token_enabled}
         """

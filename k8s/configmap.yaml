@@ -43,3 +43,12 @@ data:
   OIDC_SKIP_PATHS: "/health,/security"
   # Whether to verify SSL certificates (set to "false" for self-signed certs)
   OIDC_VERIFY_SSL: "true"
+
+  # Offline Token Support (for tokens that don't expire)
+  # When enabled, users can authenticate with offline/refresh tokens
+  # The server will automatically exchange them for access tokens
+  OIDC_OFFLINE_TOKEN_ENABLED: "false"
+  # Client ID to use for token exchange (defaults to OIDC_CLIENT_ID if empty)
+  OIDC_TOKEN_EXCHANGE_CLIENT_ID: ""
+  # Seconds before access token expiry to refresh (default: 60)
+  OIDC_ACCESS_TOKEN_CACHE_BUFFER: "60"

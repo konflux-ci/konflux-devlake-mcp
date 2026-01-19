@@ -31,7 +31,8 @@ All diagrams are in Mermaid format and can be viewed in any Mermaid-compatible v
    - Error handling flow
 
 4. **[Security Architecture](./security-architecture.mmd)**
-   - OIDC authentication layer
+   - OIDC authentication layer (access token and offline token modes)
+   - Token type detection and exchange flow
    - Security layers and checks
    - SQL injection prevention
    - Data masking pipeline
@@ -95,7 +96,7 @@ mmdc -i docs/data-flow-diagram.mmd -o docs/images/data-flow-diagram.png
 - **File**: `data-flow-diagram.mmd`
 
 ### Security Model
-- **Purpose**: OIDC authentication and security validation layers
+- **Purpose**: OIDC authentication (access token and offline token modes) and security validation layers
 - **Audience**: Security team, Developers
 - **File**: `security-architecture.mmd`
 

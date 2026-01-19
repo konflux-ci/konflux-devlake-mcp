@@ -145,10 +145,15 @@ def create_auth_middleware(
             jwks_cache_ttl=config.oidc.jwks_cache_ttl,
             skip_paths=config.oidc.skip_paths,
             verify_ssl=config.oidc.verify_ssl,
+            offline_token_enabled=getattr(config.oidc, "offline_token_enabled", False),
+            token_exchange_client_id=getattr(config.oidc, "token_exchange_client_id", ""),
+            access_token_cache_buffer=getattr(config.oidc, "access_token_cache_buffer", 60),
         )
 
         if oidc_config.enabled:
             logger.info(f"OIDC authentication enabled with issuer: {oidc_config.issuer_url}")
+            if oidc_config.offline_token_enabled:
+                logger.info("Offline token mode enabled - server will exchange refresh tokens")
             return AuthMiddleware(app, oidc_config)
         else:
             logger.info("OIDC authentication is disabled")

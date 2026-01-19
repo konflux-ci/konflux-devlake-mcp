@@ -5,8 +5,16 @@ graph TB
 
     subgraph "Authentication Layer"
         AUTH[OIDC Middleware]
-        JWT{Valid JWT Token}
+        TTYPE{Token Type?}
+        ACCESS[Access Token]
+        OFFLINE[Offline Token]
+        EXCHANGE[Exchange via SSO]
         JWKS[Fetch JWKS]
+        JWT{Valid JWT?}
+    end
+
+    subgraph "External Services"
+        SSO[Red Hat SSO<br/>Keycloak]
     end
 
     subgraph "Security Layers"
@@ -30,7 +38,16 @@ graph TB
     end
 
     REQ --> AUTH
-    AUTH --> JWKS
+    AUTH --> TTYPE
+    TTYPE -->|Access Token| ACCESS
+    TTYPE -->|Offline Token| OFFLINE
+    OFFLINE --> EXCHANGE
+    EXCHANGE -->|Get Access Token| SSO
+    SSO -->|Access Token| EXCHANGE
+    EXCHANGE --> ACCESS
+    ACCESS --> JWKS
+    JWKS -->|Fetch Keys| SSO
+    SSO -->|JWKS| JWKS
     JWKS --> JWT
     JWT -->|Valid| L1
     JWT -->|Invalid| BLOCK0[401 Unauthorized]
@@ -54,3 +71,5 @@ graph TB
     style BLOCK4 fill:#ffcdd2
     style EXEC fill:#c8e6c9
     style AUTH fill:#e3f2fd
+    style SSO fill:#fff3e0
+    style EXCHANGE fill:#e8eaf6

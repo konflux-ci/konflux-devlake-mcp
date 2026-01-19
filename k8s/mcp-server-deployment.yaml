@@ -125,6 +125,25 @@ spec:
                   name: konflux-mcp-config
                   key: OIDC_VERIFY_SSL
                   optional: true
+            # Offline token support (for tokens that don't expire)
+            - name: OIDC_OFFLINE_TOKEN_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: OIDC_OFFLINE_TOKEN_ENABLED
+                  optional: true
+            - name: OIDC_TOKEN_EXCHANGE_CLIENT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: OIDC_TOKEN_EXCHANGE_CLIENT_ID
+                  optional: true
+            - name: OIDC_ACCESS_TOKEN_CACHE_BUFFER
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: OIDC_ACCESS_TOKEN_CACHE_BUFFER
+                  optional: true
             # SSE/Long-lived connection timeouts (1 hour)
             - name: SERVER_TIMEOUT_KEEP_ALIVE
               value: "3600"

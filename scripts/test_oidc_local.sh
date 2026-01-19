@@ -10,6 +10,19 @@
 # Usage:
 #   export OFFLINE_TOKEN="your-offline-token"
 #   ./scripts/test_oidc_local.sh
+#
+# Two authentication modes are supported:
+#
+# 1. Access Token Mode (default):
+#    - Client fetches access token from SSO using offline token
+#    - Client sends access token to MCP server
+#    - Server validates JWT access token directly
+#
+# 2. Offline Token Mode (new):
+#    - Client sends offline token directly to MCP server
+#    - Server exchanges it for an access token automatically
+#    - Server caches access token and refreshes as needed
+#    - To enable: set OIDC_OFFLINE_TOKEN_ENABLED=true
 
 set -e
 
@@ -86,10 +99,19 @@ echo -e "  Expires:            ${EXP_DATE}"
 echo ""
 echo -e "${YELLOW}Step 3: Suggested environment variables for MCP server:${NC}"
 echo ""
+echo -e "${BLUE}Option A - Access Token Mode (client exchanges token):${NC}"
 echo "export OIDC_ENABLED=true"
 echo "export OIDC_ISSUER_URL=\"${ISSUER}\""
 echo "export OIDC_CLIENT_ID=\"${AZP}\""  # Use azp (authorized party) as client_id
 echo "export OIDC_VERIFY_SSL=true"
+echo ""
+echo -e "${BLUE}Option B - Offline Token Mode (server exchanges token):${NC}"
+echo "export OIDC_ENABLED=true"
+echo "export OIDC_ISSUER_URL=\"${ISSUER}\""
+echo "export OIDC_CLIENT_ID=\"${AZP}\""
+echo "export OIDC_VERIFY_SSL=true"
+echo "export OIDC_OFFLINE_TOKEN_ENABLED=true"
+echo "export OIDC_TOKEN_EXCHANGE_CLIENT_ID=\"cloud-services\"  # Client ID for token exchange"
 echo ""
 
 # Check if server is running
@@ -181,6 +203,31 @@ elif [ "$AUTH_STATUS" == "401" ] || [ "$AUTH_STATUS" == "403" ]; then
 else
     echo -e "${YELLOW}Unexpected response (HTTP $AUTH_STATUS):${NC}"
     echo "$AUTH_BODY" | jq '.' 2>/dev/null || echo "$AUTH_BODY"
+fi
+
+# Test with offline token directly (if OIDC_OFFLINE_TOKEN_ENABLED is set on server)
+echo ""
+echo -e "${BLUE}Testing /mcp endpoint with OFFLINE token directly:${NC}"
+echo "(This only works if server has OIDC_OFFLINE_TOKEN_ENABLED=true)"
+OFFLINE_AUTH_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${MCP_SERVER_URL}/mcp" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -H "Authorization: Bearer ${OFFLINE_TOKEN}" \
+    -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' 2>/dev/null || echo -e "\n000")
+OFFLINE_AUTH_STATUS=$(echo "$OFFLINE_AUTH_RESPONSE" | tail -1)
+OFFLINE_AUTH_BODY=$(echo "$OFFLINE_AUTH_RESPONSE" | sed '$d')
+
+if [ "$OFFLINE_AUTH_STATUS" == "200" ]; then
+    echo -e "${GREEN}Offline token authentication successful (HTTP $OFFLINE_AUTH_STATUS)${NC}"
+    echo "$OFFLINE_AUTH_BODY" | jq '.' 2>/dev/null | head -20 || echo "$OFFLINE_AUTH_BODY" | head -20
+    echo "..."
+elif [ "$OFFLINE_AUTH_STATUS" == "401" ]; then
+    echo -e "${YELLOW}Offline token not accepted (HTTP $OFFLINE_AUTH_STATUS)${NC}"
+    echo "This is expected if OIDC_OFFLINE_TOKEN_ENABLED is not set to 'true'"
+    echo "$OFFLINE_AUTH_BODY" | jq '.' 2>/dev/null || echo "$OFFLINE_AUTH_BODY"
+else
+    echo -e "${YELLOW}Response (HTTP $OFFLINE_AUTH_STATUS):${NC}"
+    echo "$OFFLINE_AUTH_BODY" | jq '.' 2>/dev/null || echo "$OFFLINE_AUTH_BODY"
 fi
 
 echo ""

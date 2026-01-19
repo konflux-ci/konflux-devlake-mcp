@@ -90,7 +90,7 @@ These high default values ensure that long-running LLM requests and complex data
 
 ### OIDC Authentication (Red Hat SSO / Keycloak)
 
-The server supports OIDC authentication for securing MCP endpoints. When enabled, all requests to `/mcp` endpoints require a valid JWT token.
+The server supports OIDC authentication for securing MCP endpoints. When enabled, all requests to `/mcp` endpoints require a valid token.
 
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
@@ -101,8 +101,11 @@ The server supports OIDC authentication for securing MCP endpoints. When enabled
 | `OIDC_JWKS_CACHE_TTL` | JWKS cache TTL in seconds | `3600` |
 | `OIDC_SKIP_PATHS` | Comma-separated paths to skip auth | `/health,/security` |
 | `OIDC_VERIFY_SSL` | Verify SSL certificates | `true` |
+| `OIDC_OFFLINE_TOKEN_ENABLED` | Accept offline tokens (server exchanges for access token) | `false` |
+| `OIDC_TOKEN_EXCHANGE_CLIENT_ID` | Client ID for token exchange (defaults to `OIDC_CLIENT_ID`) | - |
+| `OIDC_ACCESS_TOKEN_CACHE_BUFFER` | Seconds before expiry to refresh access token | `60` |
 
-**Example: Enable Red Hat SSO authentication**
+**Example: Enable Red Hat SSO authentication with access tokens**
 
 ```bash
 export OIDC_ENABLED=true
@@ -110,7 +113,21 @@ export OIDC_ISSUER_URL="https://sso.redhat.com/auth/realms/redhat-external"
 export OIDC_CLIENT_ID="cloud-services"
 ```
 
-Clients must include the `Authorization: Bearer <token>` header with a valid JWT token obtained from the OIDC provider.
+**Example: Enable offline token mode (server handles token exchange)**
+
+```bash
+export OIDC_ENABLED=true
+export OIDC_ISSUER_URL="https://sso.redhat.com/auth/realms/redhat-external"
+export OIDC_CLIENT_ID="cloud-services"
+export OIDC_OFFLINE_TOKEN_ENABLED=true
+export OIDC_TOKEN_EXCHANGE_CLIENT_ID="cloud-services"
+```
+
+With offline token mode, clients can use their long-lived offline token directly. The server automatically exchanges it for a short-lived access token and caches the result.
+
+Clients must include the `Authorization: Bearer <token>` header. The token can be either:
+- A JWT access token (validated directly)
+- An offline token (exchanged for access token when `OIDC_OFFLINE_TOKEN_ENABLED=true`)
 
 ### Environment Variables (Alternative)
 
