@@ -28,7 +28,9 @@ class TestCoreIntegration:
         """Test core incident retrieval works with real database."""
         incident_tools = IncidentTools(integration_db_connection)
 
-        result_json = await incident_tools.call_tool("get_incidents", {})
+        result_json = await incident_tools.call_tool(
+            "get_incidents", {"project_name": "Test_Project"}
+        )
         result = toon_decode(result_json)
 
         assert result["success"] is True
@@ -55,7 +57,8 @@ class TestCoreIntegration:
         incident_tools = IncidentTools(integration_db_connection)
 
         result_json = await incident_tools.call_tool(
-            "get_incidents", {"status": "'; DROP TABLE incidents; --"}
+            "get_incidents",
+            {"project_name": "Test_Project", "status": "'; DROP TABLE incidents; --"},
         )
         result = toon_decode(result_json)
 

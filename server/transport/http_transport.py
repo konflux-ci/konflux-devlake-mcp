@@ -220,7 +220,7 @@ class HttpTransport(BaseTransport):
             routes=[
                 Route("/health", health_check, methods=["GET"]),
                 Route("/security/stats", security_stats, methods=["GET"]),
-            ]
+            ],
         )
 
         return app

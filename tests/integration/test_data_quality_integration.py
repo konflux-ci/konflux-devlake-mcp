@@ -104,7 +104,9 @@ class TestDataQualityIntegration:
         """Test that incident dates are consistent (created < updated < resolved)."""
         incident_tools = IncidentTools(integration_db_connection)
 
-        result_json = await incident_tools.call_tool("get_incidents", {"status": "DONE"})
+        result_json = await incident_tools.call_tool(
+            "get_incidents", {"project_name": "Test_Project", "status": "DONE"}
+        )
         result = toon_decode(result_json)
 
         assert result["success"] is True
@@ -181,7 +183,9 @@ class TestDataQualityIntegration:
         """Test that NULL values are properly handled in incident queries."""
         incident_tools = IncidentTools(integration_db_connection)
 
-        result_json = await incident_tools.call_tool("get_incidents", {})
+        result_json = await incident_tools.call_tool(
+            "get_incidents", {"project_name": "Test_Project"}
+        )
         result = toon_decode(result_json)
 
         assert result["success"] is True

@@ -23,7 +23,8 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           # Ensure linters present even if requirements.txt changes
-          pip install flake8 black yamllint
+          # Pin black version to avoid formatting inconsistencies
+          pip install flake8 'black==24.10.0' yamllint
 
       - name: Run black
         run: black --check --line-length 100 .

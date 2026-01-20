@@ -16,6 +16,14 @@ from tools.database_tools import DatabaseTools
 from tools.devlake.incident_tools import IncidentTools
 from tools.devlake.deployment_tools import DeploymentTools
 from tools.devlake.pr_retest_tools import PRRetestTools
+from tools.devlake.pr_cycle_time_tools import PRCycleTimeTools
+from tools.devlake.github_actions_tools import GitHubActionsTools
+from tools.devlake.pr_stats_tools import PRStatsTools
+from tools.devlake.codecov_tools import CodecovTools
+from tools.devlake.e2e_test_tools import E2ETestTools
+from tools.devlake.historical_trends_tools import HistoricalTrendsTools
+from tools.devlake.jira_tools import JiraTools
+from tools.devlake.lead_time_tools import LeadTimeTools
 from utils.logger import get_logger, log_tool_call
 
 
@@ -43,6 +51,14 @@ class KonfluxDevLakeToolsManager:
             IncidentTools(db_connection),
             DeploymentTools(db_connection),
             PRRetestTools(db_connection),
+            PRCycleTimeTools(db_connection),
+            GitHubActionsTools(db_connection),
+            PRStatsTools(db_connection),
+            CodecovTools(db_connection),
+            E2ETestTools(db_connection),
+            HistoricalTrendsTools(db_connection),
+            JiraTools(db_connection),
+            LeadTimeTools(db_connection),
         ]
 
         # Create tool name to module mapping for efficient routing

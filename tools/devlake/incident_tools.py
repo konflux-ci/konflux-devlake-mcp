@@ -2,11 +2,12 @@
 """
 Incident Tools for Konflux DevLake MCP Server
 
-Contains tools for incident analysis and management with improved modularity
-and maintainability.
+Contains tools for incident analysis and DORA metrics including Time to Restore Service
+(MTTR) and Failed Deployment Recovery Time. Queries aligned with Konflux DevLake
+Grafana dashboards.
 """
 
-from datetime import datetime, timedelta
+import asyncio
 from typing import Any, Dict, List
 
 from mcp.types import Tool
@@ -20,8 +21,9 @@ class IncidentTools(BaseTool):
     """
     Incident-related tools for Konflux DevLake MCP Server.
 
-    This class provides tools for incident analysis, filtering, and reporting
-    with proper error handling and logging.
+    This class provides tools for incident analysis, DORA metrics (Time to Restore
+    Service, Failed Deployment Recovery Time), and reporting with proper error
+    handling and logging.
     """
 
     def __init__(self, db_connection):
@@ -45,65 +47,61 @@ class IncidentTools(BaseTool):
             Tool(
                 name="get_incidents",
                 description=(
-                    "**Comprehensive Incident Analysis Tool** - Retrieves unique incidents "
-                    "from the Konflux DevLake database with advanced filtering capabilities. "
-                    "This tool automatically deduplicates incidents by incident_key to show "
-                    "only the most recent version of each incident. Supports filtering by "
-                    "status (e.g., 'DONE', 'IN_PROGRESS', 'OPEN'), component name, and flexible "
-                    "date ranges. Provides comprehensive incident data including incident_key, "
-                    "title, description, status, created_date, resolution_date, "
-                    "lead_time_minutes, component, and URL. Perfect for incident analysis, "
-                    "reporting, and understanding operational issues. Returns incidents sorted "
-                    "by creation date (newest first)."
+                    "Retrieves incidents from the Konflux DevLake database with filtering. "
+                    "Supports filtering by project, status, component, and date ranges. "
+                    "Returns incident data including title, status, created_date, "
+                    "resolution_date, lead_time_minutes, and URL."
                 ),
                 inputSchema={
                     "type": "object",
                     "properties": {
+                        "project_name": {
+                            "type": "string",
+                            "description": "Project name to filter incidents (required)",
+                        },
                         "status": {
                             "type": "string",
-                            "description": "Filter incidents by status (e.g., "
-                            "'DONE', 'IN_PROGRESS', 'OPEN'). "
-                            "Leave empty to get all statuses.",
+                            "description": "Filter by status (e.g., 'DONE', 'IN_PROGRESS', 'OPEN')",
                         },
                         "component": {
                             "type": "string",
-                            "description": "Filter incidents by component name. "
-                            "Leave empty to get all components.",
+                            "description": "Filter by component name",
                         },
                         "days_back": {
                             "type": "integer",
-                            "description": "Number of days back to include in "
-                            "results (default: 30, max: 365). "
-                            "Leave empty to get all incidents.",
-                        },
-                        "start_date": {
-                            "type": "string",
-                            "description": "Start date for filtering (format: "
-                            "YYYY-MM-DD or YYYY-MM-DD HH:MM:SS). "
-                            "Leave empty for no start date limit.",
-                        },
-                        "end_date": {
-                            "type": "string",
-                            "description": "End date for filtering (format: "
-                            "YYYY-MM-DD or YYYY-MM-DD HH:MM:SS). "
-                            "Leave empty for no end date limit.",
-                        },
-                        "date_field": {
-                            "type": "string",
-                            "description": "Date field to filter on: "
-                            "'created_date', 'resolution_date', "
-                            "or 'updated_date' (default: "
-                            "'created_date').",
+                            "description": "Number of days back (default: 30)",
                         },
                         "limit": {
                             "type": "integer",
-                            "description": "Maximum number of incidents to "
-                            "return (default: 100, max: 500)",
+                            "description": "Maximum results (default: 100)",
                         },
                     },
-                    "required": [],
+                    "required": ["project_name"],
                 },
-            )
+            ),
+            Tool(
+                name="get_failed_deployment_recovery_time",
+                description=(
+                    "DORA Metric: Failed Deployment Recovery Time (MTTR). "
+                    "Calculates the median time to recover from incidents caused by deployments. "
+                    "Returns: median recovery time in hours, incident count, and detailed "
+                    "incident-deployment relationships. Aligned with Grafana dashboard queries."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "project_name": {
+                            "type": "string",
+                            "description": "Project name to filter (required)",
+                        },
+                        "days_back": {
+                            "type": "integer",
+                            "description": "Number of days back (default: 180)",
+                        },
+                    },
+                    "required": ["project_name"],
+                },
+            ),
         ]
 
     async def call_tool(self, name: str, arguments: Dict[str, Any]) -> str:
@@ -115,19 +113,18 @@ class IncidentTools(BaseTool):
             arguments: Tool arguments
 
         Returns:
-            TOON-encoded string with tool execution result (token-efficient format)
+            TOON-encoded string with tool execution result
         """
         try:
-            # Log tool call
             log_tool_call(name, arguments, success=True)
 
-            # Route to appropriate tool method
             if name == "get_incidents":
                 result = await self._get_incidents_tool(arguments)
+            elif name == "get_failed_deployment_recovery_time":
+                result = await self._get_failed_deployment_recovery_time(arguments)
             else:
                 result = {"success": False, "error": f"Unknown incident tool: {name}"}
 
-            # Use TOON format for token-efficient serialization (30-60% reduction vs JSON)
             return toon_encode(result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
 
         except Exception as e:
@@ -139,111 +136,296 @@ class IncidentTools(BaseTool):
                 "tool_name": name,
                 "arguments": arguments,
             }
-            # Use TOON format for error responses as well
             return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
 
     async def _get_incidents_tool(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Get unique incidents with comprehensive filtering options.
+        Get incidents with Time to Restore Service metrics.
+
+        Aligned with Grafana dashboard: DORA Details - Time to Restore Service
+        Returns median MTTR, incident count, and incident details.
 
         Args:
             arguments: Tool arguments containing filters
 
         Returns:
-            Dictionary with incident data and filtering information
+            Dictionary with incident data and MTTR metrics
         """
         try:
+            project_name = arguments.get("project_name", "")
             status = arguments.get("status", "")
             component = arguments.get("component", "")
-            days_back = arguments.get("days_back", 0)
-            start_date = arguments.get("start_date", "")
-            end_date = arguments.get("end_date", "")
-            date_field = arguments.get("date_field", "created_date")
+            days_back = arguments.get("days_back", 30)
             limit = arguments.get("limit", 100)
 
-            # Validate date_field
-            valid_date_fields = ["created_date", "resolution_date", "updated_date"]
-            if date_field not in valid_date_fields:
-                return {
-                    "success": False,
-                    "error": (
-                        f"Invalid date_field '{date_field}'. Must be one of: "
-                        f"{', '.join(valid_date_fields)}"
-                    ),
-                }
+            if not project_name:
+                return {"success": False, "error": "project_name is required"}
 
-            # Build the base query with deduplication
-            base_query = """
-            WITH _incident_rank AS (
-                SELECT
-                    i.*,
-                    row_number() OVER(
-                        PARTITION BY i.incident_key
-                        ORDER BY i.updated_date DESC
-                    ) as _incident_rank
-                FROM lake.incidents i
-                WHERE 1=1
-            """
-
-            # Build WHERE conditions
-            where_conditions = []
-
-            if status:
-                where_conditions.append(f"i.status = '{status}'")
-
-            if component:
-                where_conditions.append(f"i.component = '{component}'")
-
-            # Date filtering - prioritize explicit date ranges over days_back
-            if start_date or end_date:
-                if start_date:
-                    if len(start_date) == 10:
-                        start_date = f"{start_date} 00:00:00"
-                    where_conditions.append(f"i.{date_field} >= '{start_date}'")
-
-                if end_date:
-                    if len(end_date) == 10:
-                        end_date = f"{end_date} 23:59:59"
-                    where_conditions.append(f"i.{date_field} <= '{end_date}'")
-            elif days_back > 0:
-                start_date_calc = datetime.now() - timedelta(days=days_back)
-                start_date_str = start_date_calc.strftime("%Y-%m-%d %H:%M:%S")
-                where_conditions.append(f"i.{date_field} >= '{start_date_str}'")
-
-            # Add WHERE conditions to base query
-            if where_conditions:
-                base_query += "\n                AND " + "\n                AND ".join(
-                    where_conditions
+            # Query 1: Median Time to Restore Service (Panel 1)
+            median_query = f"""
+                WITH _incidents AS (
+                    SELECT
+                        DISTINCT i.id,
+                        CAST(i.lead_time_minutes AS SIGNED) AS lead_time_minutes
+                    FROM lake.incidents i
+                    JOIN lake.project_mapping pm ON i.scope_id = pm.row_id
+                        AND pm.`table` = i.`table`
+                    WHERE pm.project_name = '{project_name}'
+                        AND i.resolution_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                ),
+                _median_mttr_ranks AS (
+                    SELECT
+                        id,
+                        lead_time_minutes,
+                        PERCENT_RANK() OVER (ORDER BY lead_time_minutes) AS ranks
+                    FROM _incidents
+                    WHERE lead_time_minutes IS NOT NULL
+                ),
+                _median_mttr AS (
+                    SELECT MAX(lead_time_minutes) AS median_time_to_resolve
+                    FROM _median_mttr_ranks
+                    WHERE ranks <= 0.5
                 )
-
-            base_query += """
-            )
-            SELECT *
-            FROM _incident_rank
-            WHERE _incident_rank = 1
-            ORDER BY created_date DESC
+                SELECT median_time_to_resolve / 60 AS median_time_to_resolve_in_hours
+                FROM _median_mttr
             """
 
-            result = await self.db_connection.execute_query(base_query, limit)
+            # Query 2: Incident Count (Panel 2)
+            count_query = f"""
+                SELECT COUNT(DISTINCT i.id) AS incident_count
+                FROM lake.incidents i
+                JOIN lake.project_mapping pm ON i.scope_id = pm.row_id
+                    AND pm.`table` = i.`table`
+                WHERE pm.project_name = '{project_name}'
+                    AND i.created_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+            """
 
-            if result["success"]:
-                return {
-                    "success": True,
-                    "filters": {
-                        "status": status if status else "all",
-                        "component": component if component else "all",
-                        "days_back": days_back if days_back > 0 else "all",
-                        "start_date": start_date if start_date else "all",
-                        "end_date": end_date if end_date else "all",
-                        "date_field": date_field,
-                        "limit": limit,
-                    },
-                    "query": base_query,
-                    "incidents": result["data"],
-                }
+            # Query 3: Incident Details (Panel 3)
+            # Build additional WHERE conditions
+            extra_conditions = ""
+            if status:
+                extra_conditions += f" AND i.status = '{status}'"
+            if component:
+                extra_conditions += f" AND i.component = '{component}'"
 
-            return result
+            details_query = f"""
+                SELECT DISTINCT
+                    i.id AS incident_id,
+                    i.title,
+                    i.url,
+                    i.resolution_date,
+                    CAST(i.lead_time_minutes / 60 AS SIGNED) AS time_to_restore_service
+                FROM lake.incidents i
+                JOIN lake.project_mapping pm ON i.scope_id = pm.row_id
+                    AND pm.`table` = i.`table`
+                WHERE pm.project_name = '{project_name}'
+                    AND i.resolution_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                    {extra_conditions}
+                ORDER BY i.resolution_date DESC
+            """
+
+            # Execute queries in parallel
+            median_result, count_result, details_result = await asyncio.gather(
+                self.db_connection.execute_query(median_query, 1),
+                self.db_connection.execute_query(count_query, 1),
+                self.db_connection.execute_query(details_query, limit),
+            )
+
+            # Extract median MTTR
+            median_time_to_restore_hours = None
+            if median_result["success"] and median_result["data"]:
+                median_hours = median_result["data"][0].get("median_time_to_resolve_in_hours")
+                if median_hours is not None:
+                    median_time_to_restore_hours = round(float(median_hours), 2)
+
+            # Extract incident count
+            incident_count = 0
+            if count_result["success"] and count_result["data"]:
+                incident_count = int(count_result["data"][0].get("incident_count", 0))
+
+            # Extract incident details
+            incidents = []
+            if details_result["success"]:
+                incidents = details_result["data"]
+
+            return {
+                "success": True,
+                "project_name": project_name,
+                "days_back": days_back,
+                "median_time_to_restore_service_hours": median_time_to_restore_hours,
+                "incident_count": incident_count,
+                "incidents": incidents,
+            }
 
         except Exception as e:
             self.logger.error(f"Get incidents failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def _get_failed_deployment_recovery_time(
+        self, arguments: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        DORA Metric: Failed Deployment Recovery Time.
+
+        Calculates median time to recover from incidents caused by deployments.
+        Query aligned with Grafana dashboard: DORADetails-FailedDeploymentRecoveryTime.json
+
+        Args:
+            arguments: Tool arguments
+
+        Returns:
+            Dictionary with recovery time metrics and incident details
+        """
+        try:
+            project_name = arguments.get("project_name", "")
+            days_back = arguments.get("days_back", 180)
+
+            if not project_name:
+                return {"success": False, "error": "project_name is required"}
+
+            # Query 1: Median Recovery Time (aligned with Grafana dashboard)
+            median_query = f"""
+                WITH _deployments AS (
+                    SELECT
+                        cdc.cicd_deployment_id AS deployment_id,
+                        MAX(cdc.finished_date) AS deployment_finished_date
+                    FROM lake.cicd_deployment_commits cdc
+                    JOIN lake.project_mapping pm ON cdc.cicd_scope_id = pm.row_id
+                        AND pm.`table` = 'cicd_scopes'
+                    WHERE pm.project_name = '{project_name}'
+                        AND cdc.result = 'SUCCESS'
+                        AND cdc.environment = 'PRODUCTION'
+                    GROUP BY cdc.cicd_deployment_id
+                    HAVING MAX(cdc.finished_date) >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                ),
+                _incidents_for_deployments AS (
+                    SELECT
+                        i.id AS incident_id,
+                        i.created_date AS incident_create_date,
+                        i.resolution_date AS incident_resolution_date,
+                        fd.deployment_id AS caused_by_deployment,
+                        fd.deployment_finished_date
+                    FROM lake.incidents i
+                    LEFT JOIN lake.project_incident_deployment_relationships pim ON i.id = pim.id
+                    JOIN _deployments fd ON pim.deployment_id = fd.deployment_id
+                    WHERE i.resolution_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                ),
+                _recovery_time_ranks AS (
+                    SELECT
+                        incident_id,
+                        incident_resolution_date,
+                        deployment_finished_date,
+                        TIMESTAMPDIFF(MINUTE, deployment_finished_date, incident_resolution_date)
+                            AS recovery_time_minutes,
+                        PERCENT_RANK() OVER (
+                            ORDER BY TIMESTAMPDIFF(
+                                MINUTE, deployment_finished_date, incident_resolution_date
+                            )
+                        ) AS ranks
+                    FROM _incidents_for_deployments
+                    WHERE incident_resolution_date IS NOT NULL
+                )
+                SELECT
+                    MAX(recovery_time_minutes) AS median_recovery_time_minutes
+                FROM _recovery_time_ranks
+                WHERE ranks <= 0.5
+            """
+
+            # Query 2: Incident count caused by deployments
+            count_query = f"""
+                WITH _deployments AS (
+                    SELECT
+                        cdc.cicd_deployment_id AS deployment_id,
+                        MAX(cdc.finished_date) AS deployment_finished_date
+                    FROM lake.cicd_deployment_commits cdc
+                    JOIN lake.project_mapping pm ON cdc.cicd_scope_id = pm.row_id
+                        AND pm.`table` = 'cicd_scopes'
+                    WHERE pm.project_name = '{project_name}'
+                        AND cdc.result = 'SUCCESS'
+                        AND cdc.environment = 'PRODUCTION'
+                    GROUP BY cdc.cicd_deployment_id
+                    HAVING MAX(cdc.finished_date) >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                ),
+                _incidents_for_deployments AS (
+                    SELECT
+                        i.id AS incident_id
+                    FROM lake.incidents i
+                    LEFT JOIN lake.project_incident_deployment_relationships pim ON i.id = pim.id
+                    JOIN _deployments fd ON pim.deployment_id = fd.deployment_id
+                    WHERE i.resolution_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                )
+                SELECT COUNT(DISTINCT incident_id) AS total_incidents
+                FROM _incidents_for_deployments
+            """
+
+            # Query 3: Deployment and incident details (matches Grafana Panel 3)
+            details_query = f"""
+                WITH _deployments AS (
+                    SELECT
+                        cdc.cicd_deployment_id AS deployment_id,
+                        MAX(cdc.finished_date) AS deployment_finished_date
+                    FROM lake.cicd_deployment_commits cdc
+                    JOIN lake.project_mapping pm ON cdc.cicd_scope_id = pm.row_id
+                        AND pm.`table` = 'cicd_scopes'
+                    WHERE pm.project_name = '{project_name}'
+                        AND cdc.result = 'SUCCESS'
+                        AND cdc.environment = 'PRODUCTION'
+                    GROUP BY cdc.cicd_deployment_id
+                    HAVING MAX(cdc.finished_date) >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                )
+                SELECT
+                    fd.deployment_id,
+                    fd.deployment_finished_date,
+                    i.id AS incident_caused_by_deployment,
+                    i.title AS incident_title,
+                    i.url AS incident_url,
+                    i.resolution_date AS incident_resolution_date,
+                    TIMESTAMPDIFF(HOUR, fd.deployment_finished_date, i.resolution_date)
+                        AS failed_deployment_recovery_time
+                FROM lake.incidents i
+                LEFT JOIN lake.project_incident_deployment_relationships pim ON i.id = pim.id
+                JOIN _deployments fd ON pim.deployment_id = fd.deployment_id
+                WHERE i.resolution_date IS NOT NULL
+                    AND i.resolution_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                ORDER BY fd.deployment_finished_date DESC
+            """
+
+            # Execute queries in parallel
+            median_result, count_result, details_result = await asyncio.gather(
+                self.db_connection.execute_query(median_query, 1),
+                self.db_connection.execute_query(count_query, 1),
+                self.db_connection.execute_query(details_query, 100),
+            )
+
+            # Extract median recovery time
+            median_recovery_time_minutes = None
+            median_recovery_time_hours = None
+            if median_result["success"] and median_result["data"]:
+                median_minutes = median_result["data"][0].get("median_recovery_time_minutes")
+                if median_minutes is not None:
+                    median_recovery_time_minutes = int(median_minutes)
+                    median_recovery_time_hours = round(median_minutes / 60, 2)
+
+            # Extract incident count
+            total_incidents = 0
+            if count_result["success"] and count_result["data"]:
+                total_incidents = int(count_result["data"][0].get("total_incidents", 0))
+
+            # Extract incident details
+            incident_details = []
+            if details_result["success"]:
+                incident_details = details_result["data"]
+
+            return {
+                "success": True,
+                "project_name": project_name,
+                "days_back": days_back,
+                "median_recovery_time_minutes": median_recovery_time_minutes,
+                "median_recovery_time_hours": median_recovery_time_hours,
+                "incidents_caused_by_deployments": total_incidents,
+                "incident_details": incident_details,
+            }
+
+        except Exception as e:
+            self.logger.error(f"Get failed deployment recovery time failed: {e}")
             return {"success": False, "error": str(e)}
