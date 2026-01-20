@@ -21,7 +21,6 @@ import pymysql
 
 from utils.logger import get_logger, log_database_operation
 
-
 # Transient MySQL errors that warrant a retry
 TRANSIENT_MYSQL_ERRORS = {
     2006,  # MySQL server has gone away

@@ -82,6 +82,68 @@ spec:
               value: /app/logs
             - name: PYTHONPATH
               value: /app
+            # OIDC Authentication (Red Hat SSO / Keycloak)
+            - name: OIDC_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: OIDC_ENABLED
+                  optional: true
+            - name: OIDC_ISSUER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: OIDC_ISSUER_URL
+                  optional: true
+            - name: OIDC_CLIENT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: OIDC_CLIENT_ID
+                  optional: true
+            - name: OIDC_REQUIRED_SCOPES
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: OIDC_REQUIRED_SCOPES
+                  optional: true
+            - name: OIDC_JWKS_CACHE_TTL
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: OIDC_JWKS_CACHE_TTL
+                  optional: true
+            - name: OIDC_SKIP_PATHS
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: OIDC_SKIP_PATHS
+                  optional: true
+            - name: OIDC_VERIFY_SSL
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: OIDC_VERIFY_SSL
+                  optional: true
+            # Offline token support (for tokens that don't expire)
+            - name: OIDC_OFFLINE_TOKEN_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: OIDC_OFFLINE_TOKEN_ENABLED
+                  optional: true
+            - name: OIDC_TOKEN_EXCHANGE_CLIENT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: OIDC_TOKEN_EXCHANGE_CLIENT_ID
+                  optional: true
+            - name: OIDC_ACCESS_TOKEN_CACHE_BUFFER
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: OIDC_ACCESS_TOKEN_CACHE_BUFFER
+                  optional: true
             # SSE/Long-lived connection timeouts (1 hour)
             - name: SERVER_TIMEOUT_KEEP_ALIVE
               value: "3600"

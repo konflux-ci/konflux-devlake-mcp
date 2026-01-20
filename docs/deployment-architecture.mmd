@@ -11,7 +11,7 @@ graph TB
             end
 
             subgraph "Configuration"
-                CM[ConfigMap<br/>App Config]
+                CM[ConfigMap<br/>App Config + OIDC]
                 SECRET[Secret<br/>Database Credentials]
                 SA[ServiceAccount<br/>RBAC]
             end
@@ -25,16 +25,19 @@ graph TB
     subgraph "External Services"
         CLIENT[AI Assistants<br/>Users]
         CI[CI/CD Pipelines]
+        SSO[Red Hat SSO<br/>Keycloak]
     end
 
-    CLIENT -->|HTTPS| ROUTE
-    CI -->|Internal| ROUTE
+    CLIENT -->|HTTPS + Token| ROUTE
+    CI -->|Internal + Token| ROUTE
     ROUTE --> SVC
     SVC --> POD1
     POD1 -.->|Read Config| CM
     POD1 -.->|Read Creds| SECRET
     POD1 -.->|Uses Identity| SA
     POD1 -->|Connect| EXT_DB
+    POD1 -->|JWKS + Token Exchange| SSO
+    SSO -->|JWKS + Access Token| POD1
     EXT_DB -->|Results| POD1
     POD1 -->|Response| SVC
     SVC --> ROUTE
@@ -44,3 +47,4 @@ graph TB
     style SECRET fill:#ffebee
     style EXT_DB fill:#f3e5f5
     style CLIENT fill:#e1f5ff
+    style SSO fill:#fff3e0
