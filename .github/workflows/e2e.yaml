@@ -28,27 +28,36 @@ jobs:
         shell: bash
         run: |
           RUN=false
-          # Non-PR target events (push/workflow_dispatch) always run
+          # Non-PR events (push/workflow_dispatch) always run
           if [ "${{ github.event_name }}" != "pull_request_target" ]; then
             RUN=true
           else
             # For pull_request_target:
             BASE="${{ github.repository }}"
             HEAD="${{ github.event.pull_request.head.repo.full_name }}"
+            echo "::notice::Base repo: $BASE"
+            echo "::notice::Head repo: $HEAD"
             if [ "$BASE" = "$HEAD" ]; then
               # Same-repo PRs always run
               RUN=true
             else
               # Fork PRs require ok-to-test label
-              LABELS_JSON='${{ toJson(github.event.pull_request.labels) }}'
-              if echo "$LABELS_JSON" | grep -qi '"name":"ok-to-test"'; then
+              # Fetch current labels via API (event payload may be stale)
+              PR_NUMBER="${{ github.event.pull_request.number }}"
+              LABELS_JSON=$(gh api "repos/$BASE/pulls/$PR_NUMBER" --jq '.labels')
+              echo "::notice::PR #$PR_NUMBER labels: $LABELS_JSON"
+              if echo "$LABELS_JSON" | grep -Eqi '"name":\s*"ok-to-test"'; then
+                echo "::notice::Found ok-to-test label - proceeding with E2E"
                 RUN=true
               else
-                echo "::notice::Fork PR is missing 'ok-to-test' label. Skipping e2e."
+                echo "::notice::Fork PR needs 'ok-to-test' label to run E2E."
               fi
             fi
           fi
+          echo "::notice::Gate decision: run=$RUN"
           echo "run=$RUN" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   e2e-secrets-precheck:
     name: E2E secret precheck
@@ -62,6 +71,7 @@ jobs:
             echo "::error::Set GEMINI_API_KEY."
             exit 1
           fi
+
   e2e-tests:
     name: E2E Tests
     needs: [gate, e2e-secrets-precheck]
@@ -88,8 +98,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          repository: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name) || '' }}
-          ref: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.ref) || '' }}
+          persist-credentials: false
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
 
       - name: Install MySQL client
         run: |
