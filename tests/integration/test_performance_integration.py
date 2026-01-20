@@ -49,7 +49,7 @@ class TestConcurrentOperations:
 
         assert len(results) == 5
         for result_json in results:
-            result = json.loads(result_json)
+            result = toon_decode(result_json)
             assert result["success"] is True
             assert "deployments" in result
 
@@ -75,10 +75,10 @@ class TestConcurrentOperations:
         # Results are: incident, deployment, database, incident, deployment
         # Use appropriate decoder for each
         result1 = toon_decode(results[0])  # incident
-        result2 = json.loads(results[1])  # deployment
+        result2 = toon_decode(results[1])  # deployment
         result3 = json.loads(results[2])  # database
         result4 = toon_decode(results[3])  # incident
-        result5 = json.loads(results[4])  # deployment
+        result5 = toon_decode(results[4])  # deployment
 
         assert result1["success"] is True
         assert result2["success"] is True
@@ -173,7 +173,7 @@ class TestErrorScenarios:
         result_json = await deployment_tools.call_tool(
             "get_deployments", {"start_date": "not-a-valid-date"}
         )
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert isinstance(result, dict)
         assert "success" in result

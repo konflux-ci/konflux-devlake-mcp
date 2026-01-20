@@ -38,6 +38,7 @@ class TestToolsManagerIntegration:
         assert "get_incidents" in tool_names
 
         assert "get_deployments" in tool_names
+        assert "get_deployment_frequency" in tool_names
         assert "analyze_pr_retests" in tool_names
 
     async def test_call_database_tool(self, integration_db_connection: KonfluxDevLakeConnection):
@@ -69,10 +70,23 @@ class TestToolsManagerIntegration:
         tools_manager = KonfluxDevLakeToolsManager(integration_db_connection)
 
         result_json = await tools_manager.call_tool("get_deployments", {})
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is True
         assert "deployments" in result
+
+    async def test_call_deployment_frequency_tool(
+        self, integration_db_connection: KonfluxDevLakeConnection, clean_database
+    ):
+        """Test calling the deployment frequency tool through the manager."""
+        tools_manager = KonfluxDevLakeToolsManager(integration_db_connection)
+
+        result_json = await tools_manager.call_tool("get_deployment_frequency", {})
+        result = toon_decode(result_json)
+
+        assert result["success"] is True
+        assert "summary" in result
+        assert "dora_level" in result["summary"]
 
     async def test_call_nonexistent_tool(self, integration_db_connection: KonfluxDevLakeConnection):
         """Test calling a non-existent tool returns proper error."""
@@ -117,6 +131,7 @@ class TestToolsManagerIntegration:
         assert tools_manager.validate_tool_exists("list_databases") is True
         assert tools_manager.validate_tool_exists("get_incidents") is True
         assert tools_manager.validate_tool_exists("get_deployments") is True
+        assert tools_manager.validate_tool_exists("get_deployment_frequency") is True
         assert tools_manager.validate_tool_exists("analyze_pr_retests") is True
 
         assert tools_manager.validate_tool_exists("nonexistent_tool") is False
@@ -174,7 +189,7 @@ class TestToolsManagerIntegration:
         assert result2["success"] is True
 
         result3_json = await tools_manager.call_tool("get_deployments", {})
-        result3 = json.loads(result3_json)
+        result3 = toon_decode(result3_json)
         assert result3["success"] is True
 
     async def test_tool_error_handling(self, integration_db_connection: KonfluxDevLakeConnection):

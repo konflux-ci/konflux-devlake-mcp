@@ -7,10 +7,11 @@ Tests the DeploymentTools class functionality including:
 - Deployment data retrieval with filtering
 - Parameter validation
 - Environment and project filtering
+- Deployment frequency aggregation
 """
 
 import pytest
-import json
+from toon_format import decode as toon_decode
 
 from tools.devlake.deployment_tools import DeploymentTools
 from mcp.types import Tool
@@ -26,22 +27,32 @@ class TestDeploymentTools:
         return DeploymentTools(mock_db_connection)
 
     def test_get_tools_returns_deployment_tools(self, deployment_tools):
-        """Test that get_tools returns the deployment analytics tool."""
+        """Test that get_tools returns the deployment tools."""
         tools = deployment_tools.get_tools()
 
-        assert len(tools) == 1
-        assert isinstance(tools[0], Tool)
-        assert tools[0].name == "get_deployments"
-        assert "Comprehensive Deployment Analytics Tool" in tools[0].description
+        assert len(tools) == 2
+        assert all(isinstance(t, Tool) for t in tools)
+
+        tool_names = [t.name for t in tools]
+        assert "get_deployments" in tool_names
+        assert "get_deployment_frequency" in tool_names
+
+        get_deployments = next(t for t in tools if t.name == "get_deployments")
+        assert "Comprehensive Deployment Analytics Tool" in get_deployments.description
+
+        get_frequency = next(t for t in tools if t.name == "get_deployment_frequency")
+        assert "DORA Deployment Frequency Metrics Tool" in get_frequency.description
 
     def test_get_tool_names(self, deployment_tools):
         """Test get_tool_names method."""
         tool_names = deployment_tools.get_tool_names()
         assert "get_deployments" in tool_names
+        assert "get_deployment_frequency" in tool_names
 
     def test_validate_tool_exists(self, deployment_tools):
         """Test tool existence validation."""
         assert deployment_tools.validate_tool_exists("get_deployments") is True
+        assert deployment_tools.validate_tool_exists("get_deployment_frequency") is True
         assert deployment_tools.validate_tool_exists("nonexistent_tool") is False
 
     @pytest.mark.asyncio
@@ -57,7 +68,7 @@ class TestDeploymentTools:
         }
 
         result_json = await deployment_tools.call_tool("get_deployments", {})
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is True
         assert "filters" in result
@@ -88,7 +99,7 @@ class TestDeploymentTools:
         result_json = await deployment_tools.call_tool(
             "get_deployments", {"project": "Konflux_Pilot_Team"}
         )
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is True
         assert result["filters"]["project"] == "Konflux_Pilot_Team"
@@ -112,7 +123,7 @@ class TestDeploymentTools:
         result_json = await deployment_tools.call_tool(
             "get_deployments", {"environment": "PRODUCTION"}
         )
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is True
         assert result["filters"]["environment"] == "PRODUCTION"
@@ -134,7 +145,7 @@ class TestDeploymentTools:
         }
 
         result_json = await deployment_tools.call_tool("get_deployments", {"days_back": 30})
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is True
         assert result["filters"]["days_back"] == 30
@@ -159,7 +170,7 @@ class TestDeploymentTools:
         result_json = await deployment_tools.call_tool(
             "get_deployments", {"start_date": "2024-01-15", "end_date": "2024-01-16"}
         )
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is True
         assert "2024-01-15" in result["filters"]["start_date"]
@@ -185,7 +196,7 @@ class TestDeploymentTools:
             "get_deployments",
             {"start_date": "2024-01-15 10:00:00", "end_date": "2024-01-16 12:00:00"},
         )
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is True
         assert result["filters"]["start_date"] == "2024-01-15 10:00:00"
@@ -207,7 +218,7 @@ class TestDeploymentTools:
             result_json = await deployment_tools.call_tool(
                 "get_deployments", {"date_field": date_field}
             )
-            result = json.loads(result_json)
+            result = toon_decode(result_json)
 
             assert result["success"] is True
             assert result["filters"]["date_field"] == date_field
@@ -218,7 +229,7 @@ class TestDeploymentTools:
         result_json = await deployment_tools.call_tool(
             "get_deployments", {"date_field": "invalid_field"}
         )
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is False
         assert "Invalid date_field 'invalid_field'" in result["error"]
@@ -236,7 +247,7 @@ class TestDeploymentTools:
         }
 
         result_json = await deployment_tools.call_tool("get_deployments", {"limit": 25})
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is True
         assert result["filters"]["limit"] == 25
@@ -267,7 +278,7 @@ class TestDeploymentTools:
             "get_deployments",
             {"project": "Konflux_Pilot_Team", "environment": "PRODUCTION", "limit": 100},
         )
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is True
         assert result["filters"]["project"] == "Konflux_Pilot_Team"
@@ -297,7 +308,7 @@ class TestDeploymentTools:
         }
 
         result_json = await deployment_tools.call_tool("get_deployments", {})
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is False
         assert "Database connection failed" in result["error"]
@@ -308,7 +319,7 @@ class TestDeploymentTools:
         mock_db_connection.execute_query.side_effect = Exception("Unexpected error")
 
         result_json = await deployment_tools.call_tool("get_deployments", {})
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is False
         assert "Unexpected error" in result["error"]
@@ -317,7 +328,7 @@ class TestDeploymentTools:
     async def test_unknown_tool_call(self, deployment_tools):
         """Test calling an unknown tool."""
         result_json = await deployment_tools.call_tool("unknown_tool", {})
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is False
         assert "Unknown deployment tool: unknown_tool" in result["error"]
@@ -384,3 +395,252 @@ class TestDeploymentTools:
 
         for deployment in sample_deployment_data:
             assert deployment["result"] in valid_results
+
+
+@pytest.mark.unit
+class TestDeploymentFrequencyTool:
+    """Test suite for get_deployment_frequency tool."""
+
+    @pytest.fixture
+    def deployment_tools(self, mock_db_connection):
+        """Create DeploymentTools instance with mock connection."""
+        return DeploymentTools(mock_db_connection)
+
+    @pytest.mark.asyncio
+    async def test_get_deployment_frequency_default_params(
+        self, deployment_tools, mock_db_connection, sample_daily_deployment_data
+    ):
+        """Test get_deployment_frequency with explicit date range covering mock data."""
+        mock_db_connection.execute_query.return_value = {
+            "success": True,
+            "data": sample_daily_deployment_data,
+        }
+
+        # Use explicit date range to ensure mock data (Jan 2024) is always in range
+        result_toon = await deployment_tools.call_tool(
+            "get_deployment_frequency",
+            {"start_date": "2024-01-01", "end_date": "2024-01-31"},
+        )
+        result = toon_decode(result_toon)
+
+        assert result["success"] is True
+        assert "summary" in result
+        assert "daily" in result
+        assert "weekly" in result
+        assert "monthly" in result
+        assert "date_range" in result
+
+    @pytest.mark.asyncio
+    async def test_get_deployment_frequency_with_project(
+        self, deployment_tools, mock_db_connection, sample_daily_deployment_data
+    ):
+        """Test get_deployment_frequency with project filter."""
+        mock_db_connection.execute_query.return_value = {
+            "success": True,
+            "data": sample_daily_deployment_data,
+        }
+
+        result_toon = await deployment_tools.call_tool(
+            "get_deployment_frequency",
+            {"project": "Test_Project", "start_date": "2024-01-01", "end_date": "2024-01-31"},
+        )
+        result = toon_decode(result_toon)
+
+        assert result["success"] is True
+        assert result["project"] == "Test_Project"
+
+    @pytest.mark.asyncio
+    async def test_get_deployment_frequency_with_days_back(
+        self, deployment_tools, mock_db_connection, sample_daily_deployment_data
+    ):
+        """Test get_deployment_frequency date range calculation (90 days)."""
+        mock_db_connection.execute_query.return_value = {
+            "success": True,
+            "data": sample_daily_deployment_data,
+        }
+
+        # Test 90-day range with explicit dates
+        result_toon = await deployment_tools.call_tool(
+            "get_deployment_frequency",
+            {"start_date": "2023-11-03", "end_date": "2024-01-31"},
+        )
+        result = toon_decode(result_toon)
+
+        assert result["success"] is True
+        # 2023-11-03 to 2024-01-31 = 89 days
+        assert result["date_range"]["days"] == 89
+
+    @pytest.mark.asyncio
+    async def test_get_deployment_frequency_with_date_range(
+        self, deployment_tools, mock_db_connection, sample_daily_deployment_data
+    ):
+        """Test get_deployment_frequency with explicit date range."""
+        mock_db_connection.execute_query.return_value = {
+            "success": True,
+            "data": sample_daily_deployment_data,
+        }
+
+        result_toon = await deployment_tools.call_tool(
+            "get_deployment_frequency",
+            {"start_date": "2024-01-01", "end_date": "2024-01-31"},
+        )
+        result = toon_decode(result_toon)
+
+        assert result["success"] is True
+        assert result["date_range"]["start"] == "2024-01-01"
+        assert result["date_range"]["end"] == "2024-01-31"
+
+    @pytest.mark.asyncio
+    async def test_get_deployment_frequency_summary_stats(
+        self, deployment_tools, mock_db_connection, sample_daily_deployment_data
+    ):
+        """Test that summary statistics are calculated correctly."""
+        mock_db_connection.execute_query.return_value = {
+            "success": True,
+            "data": sample_daily_deployment_data,
+        }
+
+        result_toon = await deployment_tools.call_tool(
+            "get_deployment_frequency",
+            {"start_date": "2024-01-01", "end_date": "2024-01-31"},
+        )
+        result = toon_decode(result_toon)
+
+        summary = result["summary"]
+        assert "total_deployments" in summary
+        assert "unique_deployment_days" in summary
+        assert "total_weeks" in summary
+        assert "avg_deployments_per_week" in summary
+        assert "avg_deployment_days_per_week" in summary
+        assert "dora_level" in summary
+
+        # Verify calculations
+        assert (
+            summary["total_deployments"] == 15
+        )  # 3+2+5+1+4 (based on sample_daily_deployment_data in conftest.py)
+        assert (
+            summary["unique_deployment_days"] == 5
+        )  # 5 days (based on sample_daily_deployment_data in conftest.py)
+
+    @pytest.mark.asyncio
+    async def test_get_deployment_frequency_dora_levels(self, deployment_tools, mock_db_connection):
+        """Test DORA level classification."""
+        # Test high performer (>= 1 day/week) with 2 weeks of data
+        mock_db_connection.execute_query.return_value = {
+            "success": True,
+            "data": [
+                {"deployment_date": "2024-01-15", "deployment_count": 1},
+                {"deployment_date": "2024-01-22", "deployment_count": 1},
+            ],
+        }
+
+        result_toon = await deployment_tools.call_tool(
+            "get_deployment_frequency",
+            {"start_date": "2024-01-08", "end_date": "2024-01-31"},
+        )
+        result = toon_decode(result_toon)
+
+        assert result["summary"]["dora_level"] in ["elite", "high", "medium", "low"]
+
+    @pytest.mark.asyncio
+    async def test_get_deployment_frequency_weekly_aggregation(
+        self, deployment_tools, mock_db_connection, sample_daily_deployment_data
+    ):
+        """Test weekly aggregation structure."""
+        mock_db_connection.execute_query.return_value = {
+            "success": True,
+            "data": sample_daily_deployment_data,
+        }
+
+        result_toon = await deployment_tools.call_tool(
+            "get_deployment_frequency",
+            {"start_date": "2024-01-01", "end_date": "2024-01-31"},
+        )
+        result = toon_decode(result_toon)
+
+        weekly = result["weekly"]
+        assert len(weekly) > 0
+
+        for week_start, week_data in weekly.items():
+            assert "deployment_days" in week_data
+            assert "total_deployments" in week_data
+            assert week_data["deployment_days"] <= 7
+
+    @pytest.mark.asyncio
+    async def test_get_deployment_frequency_monthly_aggregation(
+        self, deployment_tools, mock_db_connection, sample_daily_deployment_data
+    ):
+        """Test monthly aggregation structure."""
+        mock_db_connection.execute_query.return_value = {
+            "success": True,
+            "data": sample_daily_deployment_data,
+        }
+
+        result_toon = await deployment_tools.call_tool(
+            "get_deployment_frequency",
+            {"start_date": "2024-01-01", "end_date": "2024-01-31"},
+        )
+        result = toon_decode(result_toon)
+
+        monthly = result["monthly"]
+        assert len(monthly) > 0
+
+        for month_key, month_data in monthly.items():
+            assert "deployment_days" in month_data
+            assert "total_deployments" in month_data
+            # Month key format should be YYYY-MM
+            assert len(month_key) == 7
+            assert "-" in month_key
+
+    @pytest.mark.asyncio
+    async def test_get_deployment_frequency_database_error(
+        self, deployment_tools, mock_db_connection
+    ):
+        """Test handling of database errors."""
+        mock_db_connection.execute_query.return_value = {
+            "success": False,
+            "error": "Database connection failed",
+        }
+
+        result_toon = await deployment_tools.call_tool(
+            "get_deployment_frequency",
+            {"start_date": "2024-01-01", "end_date": "2024-01-31"},
+        )
+        result = toon_decode(result_toon)
+
+        assert result["success"] is False
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_get_deployment_frequency_exception_handling(
+        self, deployment_tools, mock_db_connection
+    ):
+        """Test exception handling in deployment frequency tool."""
+        mock_db_connection.execute_query.side_effect = Exception("Unexpected error")
+
+        result_toon = await deployment_tools.call_tool(
+            "get_deployment_frequency",
+            {"start_date": "2024-01-01", "end_date": "2024-01-31"},
+        )
+        result = toon_decode(result_toon)
+
+        assert result["success"] is False
+        assert "Unexpected error" in result["error"]
+
+    def test_deployment_frequency_tool_input_schema(self, deployment_tools):
+        """Test that the deployment frequency tool has proper input schema."""
+        tools = deployment_tools.get_tools()
+        frequency_tool = next(t for t in tools if t.name == "get_deployment_frequency")
+
+        schema = frequency_tool.inputSchema
+        assert schema["type"] == "object"
+        assert "properties" in schema
+        assert "required" in schema
+        assert schema["required"] == []
+
+        properties = schema["properties"]
+        expected_properties = ["project", "days_back", "start_date", "end_date"]
+
+        for prop in expected_properties:
+            assert prop in properties
+            assert "description" in properties[prop]
