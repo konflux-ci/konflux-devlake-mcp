@@ -5,7 +5,6 @@ These tests verify that the most critical database operations work correctly.
 """
 
 import pytest
-import json
 from toon_format import decode as toon_decode
 from utils.db import KonfluxDevLakeConnection
 from tools.devlake.incident_tools import IncidentTools
@@ -43,7 +42,7 @@ class TestCoreIntegration:
         deployment_tools = DeploymentTools(integration_db_connection)
 
         result_json = await deployment_tools.call_tool("get_deployments", {})
-        result = json.loads(result_json)
+        result = toon_decode(result_json)
 
         assert result["success"] is True
         assert "deployments" in result

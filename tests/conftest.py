@@ -90,9 +90,9 @@ def mock_tools_manager(mock_db_connection):
     mock_tools.validate_tool_exists = Mock(return_value=True)
     mock_tools.get_tool_statistics = Mock(
         return_value={
-            "total_tools": 6,
+            "total_tools": 7,
             "modules": 3,
-            "tools_by_module": {"DatabaseTools": 4, "IncidentTools": 1, "DeploymentTools": 1},
+            "tools_by_module": {"DatabaseTools": 4, "IncidentTools": 1, "DeploymentTools": 2},
             "available_tools": [
                 "connect_database",
                 "list_databases",
@@ -100,6 +100,7 @@ def mock_tools_manager(mock_db_connection):
                 "get_table_schema",
                 "get_incidents",
                 "get_deployments",
+                "get_deployment_frequency",
             ],
         }
     )
@@ -157,6 +158,18 @@ def sample_deployment_data():
             "environment": "PRODUCTION",
             "finished_date": "2024-01-16T10:15:00",
         },
+    ]
+
+
+@pytest.fixture
+def sample_daily_deployment_data():
+    """Sample aggregated daily deployment data for testing deployment frequency."""
+    return [
+        {"deployment_date": "2024-01-15", "deployment_count": 3},
+        {"deployment_date": "2024-01-16", "deployment_count": 2},
+        {"deployment_date": "2024-01-17", "deployment_count": 5},
+        {"deployment_date": "2024-01-22", "deployment_count": 1},
+        {"deployment_date": "2024-01-23", "deployment_count": 4},
     ]
 
 
