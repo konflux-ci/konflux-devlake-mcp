@@ -6,7 +6,7 @@ against a real MySQL database instance.
 """
 
 import pytest
-import json
+from toon_format import decode as toon_decode
 
 from tools.database_tools import DatabaseTools
 from utils.db import KonfluxDevLakeConnection
@@ -29,8 +29,8 @@ class TestDatabaseIntegration:
         """Test listing databases."""
         db_tools = DatabaseTools(integration_db_connection)
 
-        result_json = await db_tools.call_tool("list_databases", {})
-        result = json.loads(result_json)
+        result_toon = await db_tools.call_tool("list_databases", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "data" in result
@@ -42,8 +42,8 @@ class TestDatabaseIntegration:
         """Test listing tables in the lake database."""
         db_tools = DatabaseTools(integration_db_connection)
 
-        result_json = await db_tools.call_tool("list_tables", {"database": "lake"})
-        result = json.loads(result_json)
+        result_toon = await db_tools.call_tool("list_tables", {"database": "lake"})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "data" in result
@@ -63,10 +63,10 @@ class TestDatabaseIntegration:
         """Test getting table schema information."""
         db_tools = DatabaseTools(integration_db_connection)
 
-        result_json = await db_tools.call_tool(
+        result_toon = await db_tools.call_tool(
             "get_table_schema", {"database": "lake", "table": "incidents"}
         )
-        result = json.loads(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "data" in result
@@ -86,10 +86,10 @@ class TestDatabaseIntegration:
         """Test getting schema for non-existent table."""
         db_tools = DatabaseTools(integration_db_connection)
 
-        result_json = await db_tools.call_tool(
+        result_toon = await db_tools.call_tool(
             "get_table_schema", {"database": "lake", "table": "nonexistent_table"}
         )
-        result = json.loads(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "error" in result
@@ -100,10 +100,10 @@ class TestDatabaseIntegration:
         """Test getting schema from invalid database."""
         db_tools = DatabaseTools(integration_db_connection)
 
-        result_json = await db_tools.call_tool(
+        result_toon = await db_tools.call_tool(
             "get_table_schema", {"database": "nonexistent_db", "table": "incidents"}
         )
-        result = json.loads(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "error" in result
@@ -114,8 +114,8 @@ class TestDatabaseIntegration:
         """Test error handling in database tools."""
         db_tools = DatabaseTools(integration_db_connection)
 
-        result_json = await db_tools.call_tool("get_table_schema", {"database": "lake"})
-        result = json.loads(result_json)
+        result_toon = await db_tools.call_tool("get_table_schema", {"database": "lake"})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "error" in result

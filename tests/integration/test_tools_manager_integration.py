@@ -6,7 +6,6 @@ with real database operations and proper tool routing.
 """
 
 import pytest
-import json
 from toon_format import decode as toon_decode
 
 from tools.tools_manager import KonfluxDevLakeToolsManager
@@ -45,8 +44,8 @@ class TestToolsManagerIntegration:
         """Test calling a database tool through the manager."""
         tools_manager = KonfluxDevLakeToolsManager(integration_db_connection)
 
-        result_json = await tools_manager.call_tool("list_databases", {})
-        result = json.loads(result_json)
+        result_toon = await tools_manager.call_tool("list_databases", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "data" in result
@@ -57,10 +56,10 @@ class TestToolsManagerIntegration:
         """Test calling an incident tool through the manager."""
         tools_manager = KonfluxDevLakeToolsManager(integration_db_connection)
 
-        result_json = await tools_manager.call_tool(
+        result_toon = await tools_manager.call_tool(
             "get_incidents", {"project_name": "Test_Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "incidents" in result or "incident_count" in result
@@ -71,8 +70,8 @@ class TestToolsManagerIntegration:
         """Test calling a deployment tool through the manager."""
         tools_manager = KonfluxDevLakeToolsManager(integration_db_connection)
 
-        result_json = await tools_manager.call_tool("get_deployments", {})
-        result = toon_decode(result_json)
+        result_toon = await tools_manager.call_tool("get_deployments", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "deployments" in result
@@ -83,8 +82,8 @@ class TestToolsManagerIntegration:
         """Test calling the deployment frequency tool through the manager."""
         tools_manager = KonfluxDevLakeToolsManager(integration_db_connection)
 
-        result_json = await tools_manager.call_tool("get_deployment_frequency", {})
-        result = toon_decode(result_json)
+        result_toon = await tools_manager.call_tool("get_deployment_frequency", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "summary" in result
@@ -94,8 +93,8 @@ class TestToolsManagerIntegration:
         """Test calling a non-existent tool returns proper error."""
         tools_manager = KonfluxDevLakeToolsManager(integration_db_connection)
 
-        result_json = await tools_manager.call_tool("nonexistent_tool", {})
-        result = json.loads(result_json)
+        result_toon = await tools_manager.call_tool("nonexistent_tool", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "error" in result
@@ -170,10 +169,10 @@ class TestToolsManagerIntegration:
         """Test that tool arguments are properly routed to the correct tool."""
         tools_manager = KonfluxDevLakeToolsManager(integration_db_connection)
 
-        result_json = await tools_manager.call_tool(
+        result_toon = await tools_manager.call_tool(
             "get_incidents", {"project_name": "Test_Project", "status": "DONE", "limit": 5}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "project_name" in result or "incidents" in result
@@ -185,7 +184,7 @@ class TestToolsManagerIntegration:
         tools_manager = KonfluxDevLakeToolsManager(integration_db_connection)
 
         result1_json = await tools_manager.call_tool("list_databases", {})
-        result1 = json.loads(result1_json)
+        result1 = toon_decode(result1_json)
         assert result1["success"] is True
 
         result2_json = await tools_manager.call_tool(
@@ -202,8 +201,8 @@ class TestToolsManagerIntegration:
         """Test that tool errors are properly handled and returned."""
         tools_manager = KonfluxDevLakeToolsManager(integration_db_connection)
 
-        result_json = await tools_manager.call_tool("get_table_schema", {"database": "lake"})
-        result = json.loads(result_json)
+        result_toon = await tools_manager.call_tool("get_table_schema", {"database": "lake"})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "error" in result

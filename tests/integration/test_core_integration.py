@@ -28,10 +28,10 @@ class TestCoreIntegration:
         """Test core incident retrieval works with real database."""
         incident_tools = IncidentTools(integration_db_connection)
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test_Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "incidents" in result
@@ -43,8 +43,8 @@ class TestCoreIntegration:
         """Test core deployment retrieval works with real database."""
         deployment_tools = DeploymentTools(integration_db_connection)
 
-        result_json = await deployment_tools.call_tool("get_deployments", {})
-        result = toon_decode(result_json)
+        result_toon = await deployment_tools.call_tool("get_deployments", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "deployments" in result
@@ -56,11 +56,11 @@ class TestCoreIntegration:
         """Test that SQL injection attempts are blocked."""
         incident_tools = IncidentTools(integration_db_connection)
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents",
             {"project_name": "Test_Project", "status": "'; DROP TABLE incidents; --"},
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is False or len(result.get("incidents", [])) >= 0
 

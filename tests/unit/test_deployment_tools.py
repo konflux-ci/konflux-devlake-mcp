@@ -67,8 +67,8 @@ class TestDeploymentTools:
             "data": sample_deployment_data,
         }
 
-        result_json = await deployment_tools.call_tool("get_deployments", {})
-        result = toon_decode(result_json)
+        result_toon = await deployment_tools.call_tool("get_deployments", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "filters" in result
@@ -96,10 +96,10 @@ class TestDeploymentTools:
             "data": sample_deployment_data,
         }
 
-        result_json = await deployment_tools.call_tool(
+        result_toon = await deployment_tools.call_tool(
             "get_deployments", {"project": "Konflux_Pilot_Team"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["filters"]["project"] == "Konflux_Pilot_Team"
@@ -120,10 +120,10 @@ class TestDeploymentTools:
             "data": production_data,
         }
 
-        result_json = await deployment_tools.call_tool(
+        result_toon = await deployment_tools.call_tool(
             "get_deployments", {"environment": "PRODUCTION"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["filters"]["environment"] == "PRODUCTION"
@@ -144,8 +144,8 @@ class TestDeploymentTools:
             "data": sample_deployment_data,
         }
 
-        result_json = await deployment_tools.call_tool("get_deployments", {"days_back": 30})
-        result = toon_decode(result_json)
+        result_toon = await deployment_tools.call_tool("get_deployments", {"days_back": 30})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["filters"]["days_back"] == 30
@@ -167,10 +167,10 @@ class TestDeploymentTools:
             "data": sample_deployment_data,
         }
 
-        result_json = await deployment_tools.call_tool(
+        result_toon = await deployment_tools.call_tool(
             "get_deployments", {"start_date": "2024-01-15", "end_date": "2024-01-16"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "2024-01-15" in result["filters"]["start_date"]
@@ -192,11 +192,11 @@ class TestDeploymentTools:
             "data": sample_deployment_data,
         }
 
-        result_json = await deployment_tools.call_tool(
+        result_toon = await deployment_tools.call_tool(
             "get_deployments",
             {"start_date": "2024-01-15 10:00:00", "end_date": "2024-01-16 12:00:00"},
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["filters"]["start_date"] == "2024-01-15 10:00:00"
@@ -215,10 +215,10 @@ class TestDeploymentTools:
                 "data": sample_deployment_data,
             }
 
-            result_json = await deployment_tools.call_tool(
+            result_toon = await deployment_tools.call_tool(
                 "get_deployments", {"date_field": date_field}
             )
-            result = toon_decode(result_json)
+            result = toon_decode(result_toon)
 
             assert result["success"] is True
             assert result["filters"]["date_field"] == date_field
@@ -226,10 +226,10 @@ class TestDeploymentTools:
     @pytest.mark.asyncio
     async def test_get_deployments_invalid_date_field(self, deployment_tools):
         """Test getting deployments with invalid date field."""
-        result_json = await deployment_tools.call_tool(
+        result_toon = await deployment_tools.call_tool(
             "get_deployments", {"date_field": "invalid_field"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Invalid date_field 'invalid_field'" in result["error"]
@@ -246,8 +246,8 @@ class TestDeploymentTools:
             "data": sample_deployment_data,
         }
 
-        result_json = await deployment_tools.call_tool("get_deployments", {"limit": 25})
-        result = toon_decode(result_json)
+        result_toon = await deployment_tools.call_tool("get_deployments", {"limit": 25})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["filters"]["limit"] == 25
@@ -274,11 +274,11 @@ class TestDeploymentTools:
             "data": filtered_data,
         }
 
-        result_json = await deployment_tools.call_tool(
+        result_toon = await deployment_tools.call_tool(
             "get_deployments",
             {"project": "Konflux_Pilot_Team", "environment": "PRODUCTION", "limit": 100},
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["filters"]["project"] == "Konflux_Pilot_Team"
@@ -307,8 +307,8 @@ class TestDeploymentTools:
             "error": "Database connection failed",
         }
 
-        result_json = await deployment_tools.call_tool("get_deployments", {})
-        result = toon_decode(result_json)
+        result_toon = await deployment_tools.call_tool("get_deployments", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Database connection failed" in result["error"]
@@ -318,8 +318,8 @@ class TestDeploymentTools:
         """Test exception handling in deployment tools."""
         mock_db_connection.execute_query.side_effect = Exception("Unexpected error")
 
-        result_json = await deployment_tools.call_tool("get_deployments", {})
-        result = toon_decode(result_json)
+        result_toon = await deployment_tools.call_tool("get_deployments", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Unexpected error" in result["error"]
@@ -327,8 +327,8 @@ class TestDeploymentTools:
     @pytest.mark.asyncio
     async def test_unknown_tool_call(self, deployment_tools):
         """Test calling an unknown tool."""
-        result_json = await deployment_tools.call_tool("unknown_tool", {})
-        result = toon_decode(result_json)
+        result_toon = await deployment_tools.call_tool("unknown_tool", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Unknown deployment tool: unknown_tool" in result["error"]

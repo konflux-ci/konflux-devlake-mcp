@@ -9,7 +9,6 @@ Tests the KonfluxDevLakeToolsManager class functionality including:
 """
 
 import pytest
-import json
 from toon_format import decode as toon_decode
 
 from tools.tools_manager import KonfluxDevLakeToolsManager
@@ -88,7 +87,7 @@ class TestKonfluxDevLakeToolsManager:
         }
 
         result = await tools_manager.call_tool("connect_database", {})
-        result_data = json.loads(result)
+        result_data = toon_decode(result)
 
         assert result_data["success"] is True
         assert "Database connected successfully" in result_data["message"]
@@ -97,7 +96,7 @@ class TestKonfluxDevLakeToolsManager:
     async def test_call_tool_unknown_tool(self, tools_manager):
         """Test calling an unknown tool."""
         result = await tools_manager.call_tool("unknown_tool", {})
-        result_data = json.loads(result)
+        result_data = toon_decode(result)
 
         assert result_data["success"] is False
         assert "Unknown tool: unknown_tool" in result_data["error"]
@@ -114,7 +113,7 @@ class TestKonfluxDevLakeToolsManager:
         }
 
         result = await tools_manager.call_tool("list_tables", {"database": "test_db"})
-        result_data = json.loads(result)
+        result_data = toon_decode(result)
 
         assert result_data["success"] is True
         assert result_data["row_count"] == 2
@@ -126,7 +125,7 @@ class TestKonfluxDevLakeToolsManager:
         mock_db_connection.connect.side_effect = Exception("Connection failed")
 
         result = await tools_manager.call_tool("connect_database", {})
-        result_data = json.loads(result)
+        result_data = toon_decode(result)
 
         assert result_data["success"] is False
         assert "Connection failed" in result_data["error"]
@@ -213,11 +212,7 @@ class TestKonfluxDevLakeToolsManager:
 
         assert len(results) == 4
         for result in results:
-            # Try TOON decode first (for incident tools), fall back to JSON
-            try:
-                result_data = toon_decode(result)
-            except Exception:
-                result_data = json.loads(result)
+            result_data = toon_decode(result)
             assert result_data["success"] is True
 
     def test_tool_mapping_completeness(self, tools_manager):

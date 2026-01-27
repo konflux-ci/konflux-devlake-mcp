@@ -151,10 +151,10 @@ class TestHistoricalTrendsTools:
             {"success": True, "data": sample_weekly_breakdown},
         ]
 
-        result_json = await trends_tools.call_tool(
+        result_toon = await trends_tools.call_tool(
             "get_historical_trends", {"project_name": "Test Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["project_name"] == "Test Project"
@@ -166,8 +166,8 @@ class TestHistoricalTrendsTools:
     @pytest.mark.asyncio
     async def test_get_historical_trends_missing_project_name(self, trends_tools):
         """Test that get_historical_trends fails without project_name."""
-        result_json = await trends_tools.call_tool("get_historical_trends", {})
-        result = toon_decode(result_json)
+        result_toon = await trends_tools.call_tool("get_historical_trends", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "project_name is required" in result["error"]
@@ -182,10 +182,10 @@ class TestHistoricalTrendsTools:
             {"success": True, "data": sample_weekly_breakdown},
         ]
 
-        result_json = await trends_tools.call_tool(
+        result_toon = await trends_tools.call_tool(
             "get_historical_trends", {"project_name": "Test Project", "metric": "cycle_time"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "cycle_time" in result["metrics"]
@@ -200,11 +200,11 @@ class TestHistoricalTrendsTools:
             {"success": True, "data": sample_weekly_breakdown},
         ]
 
-        result_json = await trends_tools.call_tool(
+        result_toon = await trends_tools.call_tool(
             "get_historical_trends",
             {"project_name": "Test Project", "metric": "cycle_time", "period": "90"},
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["period_days"] == 90
@@ -217,10 +217,10 @@ class TestHistoricalTrendsTools:
             {"success": True, "data": []},
         ]
 
-        result_json = await trends_tools.call_tool(
+        result_toon = await trends_tools.call_tool(
             "get_historical_trends", {"project_name": "Empty Project", "metric": "cycle_time"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         cycle_time = result["metrics"]["cycle_time"]
@@ -232,10 +232,10 @@ class TestHistoricalTrendsTools:
         """Test handling of database errors."""
         mock_db_connection.execute_query.side_effect = Exception("Database error")
 
-        result_json = await trends_tools.call_tool(
+        result_toon = await trends_tools.call_tool(
             "get_historical_trends", {"project_name": "Test Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Database error" in result["error"]
@@ -243,8 +243,8 @@ class TestHistoricalTrendsTools:
     @pytest.mark.asyncio
     async def test_unknown_tool_call(self, trends_tools):
         """Test calling an unknown tool."""
-        result_json = await trends_tools.call_tool("unknown_tool", {})
-        result = toon_decode(result_json)
+        result_toon = await trends_tools.call_tool("unknown_tool", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Unknown tool" in result["error"]

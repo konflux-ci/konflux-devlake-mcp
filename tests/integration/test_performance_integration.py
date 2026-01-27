@@ -6,7 +6,6 @@ and edge cases correctly with a real database.
 """
 
 import pytest
-import json
 import asyncio
 from toon_format import decode as toon_decode
 
@@ -35,8 +34,8 @@ class TestConcurrentOperations:
         results = await asyncio.gather(*tasks)
 
         assert len(results) == 5
-        for result_json in results:
-            result = toon_decode(result_json)
+        for result_toon in results:
+            result = toon_decode(result_toon)
             assert result["success"] is True
             assert "incidents" in result
 
@@ -51,8 +50,8 @@ class TestConcurrentOperations:
         results = await asyncio.gather(*tasks)
 
         assert len(results) == 5
-        for result_json in results:
-            result = toon_decode(result_json)
+        for result_toon in results:
+            result = toon_decode(result_toon)
             assert result["success"] is True
             assert "deployments" in result
 
@@ -81,7 +80,7 @@ class TestConcurrentOperations:
         # Use appropriate decoder for each
         result1 = toon_decode(results[0])  # incident
         result2 = toon_decode(results[1])  # deployment
-        result3 = json.loads(results[2])  # database
+        result3 = toon_decode(results[2])  # database
         result4 = toon_decode(results[3])  # incident
         result5 = toon_decode(results[4])  # deployment
 
@@ -99,14 +98,14 @@ class TestConcurrentOperations:
 
         results = []
         for _ in range(10):
-            result_json = await incident_tools.call_tool(
+            result_toon = await incident_tools.call_tool(
                 "get_incidents", {"project_name": "Test_Project"}
             )
-            results.append(result_json)
+            results.append(result_toon)
 
         assert len(results) == 10
-        for result_json in results:
-            result = toon_decode(result_json)
+        for result_toon in results:
+            result = toon_decode(result_toon)
             assert result["success"] is True
 
 
@@ -121,8 +120,8 @@ class TestErrorScenarios:
         """Test querying a database that doesn't exist."""
         db_tools = DatabaseTools(integration_db_connection)
 
-        result_json = await db_tools.call_tool("list_tables", {"database": "nonexistent_database"})
-        result = json.loads(result_json)
+        result_toon = await db_tools.call_tool("list_tables", {"database": "nonexistent_database"})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "error" in result
@@ -149,8 +148,8 @@ class TestErrorScenarios:
         """Test tools handle missing required parameters correctly."""
         db_tools = DatabaseTools(integration_db_connection)
 
-        result_json = await db_tools.call_tool("get_table_schema", {"database": "lake"})
-        result = json.loads(result_json)
+        result_toon = await db_tools.call_tool("get_table_schema", {"database": "lake"})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "error" in result
@@ -162,11 +161,11 @@ class TestErrorScenarios:
         """Test handling of queries that return no results."""
         incident_tools = IncidentTools(integration_db_connection)
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents",
             {"project_name": "Test_Project", "component": "nonexistent-component-xyz"},
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "incidents" in result
@@ -178,10 +177,10 @@ class TestErrorScenarios:
         """Test handling of invalid filter values."""
         deployment_tools = DeploymentTools(integration_db_connection)
 
-        result_json = await deployment_tools.call_tool(
+        result_toon = await deployment_tools.call_tool(
             "get_deployments", {"start_date": "not-a-valid-date"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert isinstance(result, dict)
         assert "success" in result

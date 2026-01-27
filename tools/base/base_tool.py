@@ -50,7 +50,7 @@ class BaseTool(ABC):
             arguments: Tool arguments
 
         Returns:
-            JSON string with tool execution result
+            TOON string with tool execution result
         """
         pass
 

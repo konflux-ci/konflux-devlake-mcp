@@ -104,10 +104,10 @@ class TestDataQualityIntegration:
         """Test that incident dates are consistent (created < updated < resolved)."""
         incident_tools = IncidentTools(integration_db_connection)
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test_Project", "status": "DONE"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
 
@@ -121,10 +121,10 @@ class TestDataQualityIntegration:
         """Test that deployment dates are consistent."""
         deployment_tools = DeploymentTools(integration_db_connection)
 
-        result_json = await deployment_tools.call_tool(
+        result_toon = await deployment_tools.call_tool(
             "get_deployments", {"environment": "PRODUCTION"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
 
@@ -183,10 +183,10 @@ class TestDataQualityIntegration:
         """Test that NULL values are properly handled in incident queries."""
         incident_tools = IncidentTools(integration_db_connection)
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test_Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
 
@@ -201,8 +201,8 @@ class TestDataQualityIntegration:
         """Test that NULL values are properly handled in deployment queries."""
         deployment_tools = DeploymentTools(integration_db_connection)
 
-        result_json = await deployment_tools.call_tool("get_deployments", {})
-        result = toon_decode(result_json)
+        result_toon = await deployment_tools.call_tool("get_deployments", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
 

@@ -6,10 +6,10 @@ Manages all tools using a modular approach with clear separation of concerns
 and improved maintainability.
 """
 
-import json
 from typing import Any, Dict, List
 
 from mcp.types import Tool
+from toon_format import encode as toon_encode
 
 from tools.base.base_tool import BaseTool
 from tools.database_tools import DatabaseTools
@@ -104,7 +104,7 @@ class KonfluxDevLakeToolsManager:
             arguments: Tool arguments
 
         Returns:
-            JSON string with tool execution result
+            TOON string with tool execution result
         """
         try:
             # Log tool call
@@ -117,7 +117,9 @@ class KonfluxDevLakeToolsManager:
                     "error": f"Unknown tool: {name}",
                     "available_tools": list(self._tool_mapping.keys()),
                 }
-                return json.dumps(error_result, indent=2)
+                return toon_encode(
+                    error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""}
+                )
 
             # Execute the tool using the appropriate module
             module = self._tool_mapping[name]
@@ -134,7 +136,7 @@ class KonfluxDevLakeToolsManager:
                 "tool_name": name,
                 "arguments": arguments,
             }
-            return json.dumps(error_result, indent=2)
+            return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
 
     def get_tool_statistics(self) -> Dict[str, Any]:
         """

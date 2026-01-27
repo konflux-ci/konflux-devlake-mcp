@@ -63,10 +63,10 @@ class TestIncidentTools:
             {"success": True, "data": sample_incident_data},
         ]
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["project_name"] == "Test Project"
@@ -78,8 +78,8 @@ class TestIncidentTools:
     @pytest.mark.asyncio
     async def test_get_incidents_missing_project_name(self, incident_tools):
         """Test that get_incidents fails without project_name."""
-        result_json = await incident_tools.call_tool("get_incidents", {})
-        result = toon_decode(result_json)
+        result_toon = await incident_tools.call_tool("get_incidents", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "project_name is required" in result["error"]
@@ -98,10 +98,10 @@ class TestIncidentTools:
             {"success": True, "data": filtered_data},
         ]
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test Project", "status": "DONE"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["project_name"] == "Test Project"
@@ -120,10 +120,10 @@ class TestIncidentTools:
             {"success": True, "data": filtered_data},
         ]
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test Project", "component": "api-service"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["project_name"] == "Test Project"
@@ -139,10 +139,10 @@ class TestIncidentTools:
             {"success": True, "data": sample_incident_data},
         ]
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test Project", "days_back": 60}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["days_back"] == 60
@@ -158,10 +158,10 @@ class TestIncidentTools:
             {"success": True, "data": sample_incident_data[:1]},
         ]
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test Project", "limit": 50}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
 
@@ -182,7 +182,7 @@ class TestIncidentTools:
             {"success": True, "data": filtered_data},
         ]
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents",
             {
                 "project_name": "Test Project",
@@ -192,7 +192,7 @@ class TestIncidentTools:
                 "limit": 25,
             },
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["project_name"] == "Test Project"
@@ -203,10 +203,10 @@ class TestIncidentTools:
         """Test handling of database errors."""
         mock_db_connection.execute_query.side_effect = Exception("Database connection failed")
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Database connection failed" in result["error"]
@@ -220,10 +220,10 @@ class TestIncidentTools:
             {"success": True, "data": []},
         ]
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["median_time_to_restore_service_hours"] is None
@@ -233,8 +233,8 @@ class TestIncidentTools:
     @pytest.mark.asyncio
     async def test_unknown_tool_call(self, incident_tools):
         """Test calling an unknown tool."""
-        result_json = await incident_tools.call_tool("unknown_tool", {})
-        result = toon_decode(result_json)
+        result_toon = await incident_tools.call_tool("unknown_tool", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Unknown incident tool: unknown_tool" in result["error"]
@@ -303,10 +303,10 @@ class TestIncidentTools:
             },
         ]
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_failed_deployment_recovery_time", {"project_name": "Test Project", "days_back": 90}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["project_name"] == "Test Project"
@@ -318,8 +318,8 @@ class TestIncidentTools:
     @pytest.mark.asyncio
     async def test_get_failed_deployment_recovery_time_missing_project(self, incident_tools):
         """Test FDRT fails without project_name."""
-        result_json = await incident_tools.call_tool("get_failed_deployment_recovery_time", {})
-        result = toon_decode(result_json)
+        result_toon = await incident_tools.call_tool("get_failed_deployment_recovery_time", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "project_name is required" in result["error"]

@@ -119,10 +119,10 @@ class TestJiraTools:
             {"success": True, "data": sample_summary_data},
         ]
 
-        result_json = await jira_tools.call_tool(
+        result_toon = await jira_tools.call_tool(
             "get_jira_features", {"project_name": "Test Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["project_name"] == "Test Project"
@@ -133,8 +133,8 @@ class TestJiraTools:
     @pytest.mark.asyncio
     async def test_get_jira_features_missing_project_name(self, jira_tools):
         """Test that get_jira_features fails without project_name."""
-        result_json = await jira_tools.call_tool("get_jira_features", {})
-        result = toon_decode(result_json)
+        result_toon = await jira_tools.call_tool("get_jira_features", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "project_name is required" in result["error"]
@@ -146,10 +146,10 @@ class TestJiraTools:
             {"success": True, "data": []},  # No boards found
         ]
 
-        result_json = await jira_tools.call_tool(
+        result_toon = await jira_tools.call_tool(
             "get_jira_features", {"project_name": "Empty Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["total_features"] == 0
@@ -168,10 +168,10 @@ class TestJiraTools:
             {"success": True, "data": sample_summary_data},
         ]
 
-        result_json = await jira_tools.call_tool(
+        result_toon = await jira_tools.call_tool(
             "get_jira_features", {"project_name": "Test Project", "status": "Done"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         for feature in result["features"]:
@@ -188,10 +188,10 @@ class TestJiraTools:
             {"success": True, "data": sample_summary_data},
         ]
 
-        result_json = await jira_tools.call_tool(
+        result_toon = await jira_tools.call_tool(
             "get_jira_features", {"project_name": "Test Project", "limit": 1}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert len(result["features"]) == 1
@@ -201,10 +201,10 @@ class TestJiraTools:
         """Test handling of database errors."""
         mock_db_connection.execute_query.side_effect = Exception("Database error")
 
-        result_json = await jira_tools.call_tool(
+        result_toon = await jira_tools.call_tool(
             "get_jira_features", {"project_name": "Test Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Database error" in result["error"]
@@ -212,8 +212,8 @@ class TestJiraTools:
     @pytest.mark.asyncio
     async def test_unknown_tool_call(self, jira_tools):
         """Test calling an unknown tool."""
-        result_json = await jira_tools.call_tool("unknown_tool", {})
-        result = toon_decode(result_json)
+        result_toon = await jira_tools.call_tool("unknown_tool", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Unknown Jira tool" in result["error"]
@@ -245,10 +245,10 @@ class TestJiraTools:
             {"success": True, "data": sample_summary_data},
         ]
 
-        result_json = await jira_tools.call_tool(
+        result_toon = await jira_tools.call_tool(
             "get_jira_features", {"project_name": "Test Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
 
@@ -282,10 +282,10 @@ class TestJiraTools:
             {"success": True, "data": sample_summary_data},
         ]
 
-        result_json = await jira_tools.call_tool(
+        result_toon = await jira_tools.call_tool(
             "get_jira_features", {"project_name": "Test Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         # FEAT-002 has lead_time_minutes = 10080 (7 days = 168 hours)
         done_feature = next((f for f in result["features"] if f["issue_key"] == "FEAT-002"), None)

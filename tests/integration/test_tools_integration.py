@@ -21,10 +21,10 @@ class TestIncidentToolsIntegration:
         """Test getting incidents with required project_name."""
         incident_tools = IncidentTools(integration_db_connection)
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test_Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "incidents" in result
@@ -44,10 +44,10 @@ class TestIncidentToolsIntegration:
         """Test getting incidents with status filter."""
         incident_tools = IncidentTools(integration_db_connection)
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test_Project", "status": "DONE"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "project_name" in result
@@ -62,10 +62,10 @@ class TestIncidentToolsIntegration:
         """Test getting incidents with component filter."""
         incident_tools = IncidentTools(integration_db_connection)
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test_Project", "component": "api-service"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "project_name" in result
@@ -78,10 +78,10 @@ class TestIncidentToolsIntegration:
         """Test getting incidents with days_back filter."""
         incident_tools = IncidentTools(integration_db_connection)
 
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test_Project", "days_back": 30}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "project_name" in result
@@ -121,10 +121,10 @@ class TestIncidentToolsIntegration:
         assert result["success"] is True
 
         incident_tools = IncidentTools(integration_db_connection)
-        result_json = await incident_tools.call_tool(
+        result_toon = await incident_tools.call_tool(
             "get_incidents", {"project_name": "Test_Project", "component": "test-service"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         incidents = result["incidents"]
@@ -146,8 +146,8 @@ class TestDeploymentToolsIntegration:
         """
         deployment_tools = DeploymentTools(integration_db_connection)
 
-        result_json = await deployment_tools.call_tool("get_deployments", {})
-        result = toon_decode(result_json)
+        result_toon = await deployment_tools.call_tool("get_deployments", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "deployments" in result
@@ -171,10 +171,10 @@ class TestDeploymentToolsIntegration:
         """Test getting deployments with environment filter."""
         deployment_tools = DeploymentTools(integration_db_connection)
 
-        result_json = await deployment_tools.call_tool(
+        result_toon = await deployment_tools.call_tool(
             "get_deployments", {"environment": "PRODUCTION"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["filters"]["environment"] == "PRODUCTION"
@@ -189,10 +189,10 @@ class TestDeploymentToolsIntegration:
         """Test getting deployments with project filter."""
         deployment_tools = DeploymentTools(integration_db_connection)
 
-        result_json = await deployment_tools.call_tool(
+        result_toon = await deployment_tools.call_tool(
             "get_deployments", {"project": "Konflux_Pilot_Team"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["filters"]["project"] == "Konflux_Pilot_Team"
@@ -272,8 +272,8 @@ class TestDeploymentToolsIntegration:
         assert result["success"] is True
 
         deployment_tools = DeploymentTools(integration_db_connection)
-        result_json = await deployment_tools.call_tool("get_deployments", {})
-        result = toon_decode(result_json)
+        result_toon = await deployment_tools.call_tool("get_deployments", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         deployments = result["deployments"]
@@ -289,10 +289,10 @@ class TestDeploymentToolsIntegration:
         """Test deployment date filtering."""
         deployment_tools = DeploymentTools(integration_db_connection)
 
-        result_json = await deployment_tools.call_tool(
+        result_toon = await deployment_tools.call_tool(
             "get_deployments", {"start_date": "2024-01-15", "end_date": "2024-01-17"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "2024-01-15" in result["filters"]["start_date"]
@@ -307,8 +307,8 @@ class TestDeploymentToolsIntegration:
         """Test getting deployment frequency without filters."""
         deployment_tools = DeploymentTools(integration_db_connection)
 
-        result_json = await deployment_tools.call_tool("get_deployment_frequency", {})
-        result = toon_decode(result_json)
+        result_toon = await deployment_tools.call_tool("get_deployment_frequency", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "summary" in result
@@ -324,11 +324,11 @@ class TestDeploymentToolsIntegration:
         """Test getting deployment frequency with explicit date range."""
         deployment_tools = DeploymentTools(integration_db_connection)
 
-        result_json = await deployment_tools.call_tool(
+        result_toon = await deployment_tools.call_tool(
             "get_deployment_frequency",
             {"start_date": "2024-01-01", "end_date": "2024-01-31"},
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "summary" in result
@@ -341,10 +341,10 @@ class TestDeploymentToolsIntegration:
         """Test getting deployment frequency with project filter."""
         deployment_tools = DeploymentTools(integration_db_connection)
 
-        result_json = await deployment_tools.call_tool(
+        result_toon = await deployment_tools.call_tool(
             "get_deployment_frequency", {"project": "Konflux_Pilot_Team"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["project"] == "Konflux_Pilot_Team"

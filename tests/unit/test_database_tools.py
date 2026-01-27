@@ -10,7 +10,7 @@ Tests the DatabaseTools class functionality including:
 """
 
 import pytest
-import json
+from toon_format import decode as toon_decode
 
 from tools.database_tools import DatabaseTools
 from mcp.types import Tool
@@ -63,8 +63,8 @@ class TestDatabaseTools:
     @pytest.mark.asyncio
     async def test_connect_database_tool_success(self, database_tools, mock_db_connection):
         """Test successful database connection."""
-        result_json = await database_tools.call_tool("connect_database", {})
-        result = json.loads(result_json)
+        result_toon = await database_tools.call_tool("connect_database", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert "Database connected successfully" in result["message"]
@@ -78,8 +78,8 @@ class TestDatabaseTools:
         """Test database connection failure."""
         mock_db_connection.connect.return_value = {"success": False, "error": "Connection failed"}
 
-        result_json = await database_tools.call_tool("connect_database", {})
-        result = json.loads(result_json)
+        result_toon = await database_tools.call_tool("connect_database", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Connection failed" in result["error"]
@@ -98,8 +98,8 @@ class TestDatabaseTools:
             ],
         }
 
-        result_json = await database_tools.call_tool("list_databases", {})
-        result = json.loads(result_json)
+        result_toon = await database_tools.call_tool("list_databases", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["row_count"] == 3
@@ -122,8 +122,8 @@ class TestDatabaseTools:
             ],
         }
 
-        result_json = await database_tools.call_tool("list_tables", {"database": "lake"})
-        result = json.loads(result_json)
+        result_toon = await database_tools.call_tool("list_tables", {"database": "lake"})
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["row_count"] == 4
@@ -133,8 +133,8 @@ class TestDatabaseTools:
     @pytest.mark.asyncio
     async def test_list_tables_tool_missing_database(self, database_tools):
         """Test list tables with missing database parameter."""
-        result_json = await database_tools.call_tool("list_tables", {})
-        result = json.loads(result_json)
+        result_toon = await database_tools.call_tool("list_tables", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Database name is required" in result["error"]
@@ -151,10 +151,10 @@ class TestDatabaseTools:
             "data": sample_database_schema,
         }
 
-        result_json = await database_tools.call_tool(
+        result_toon = await database_tools.call_tool(
             "get_table_schema", {"database": "lake", "table": "incidents"}
         )
-        result = json.loads(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["row_count"] == 5
@@ -170,14 +170,14 @@ class TestDatabaseTools:
     @pytest.mark.asyncio
     async def test_get_table_schema_tool_missing_parameters(self, database_tools):
         """Test table schema with missing parameters."""
-        result_json = await database_tools.call_tool("get_table_schema", {})
-        result = json.loads(result_json)
+        result_toon = await database_tools.call_tool("get_table_schema", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Database and table names are required" in result["error"]
 
-        result_json = await database_tools.call_tool("get_table_schema", {"database": "lake"})
-        result = json.loads(result_json)
+        result_toon = await database_tools.call_tool("get_table_schema", {"database": "lake"})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Database and table names are required" in result["error"]
@@ -185,8 +185,8 @@ class TestDatabaseTools:
     @pytest.mark.asyncio
     async def test_unknown_tool_call(self, database_tools):
         """Test calling an unknown tool."""
-        result_json = await database_tools.call_tool("unknown_tool", {})
-        result = json.loads(result_json)
+        result_toon = await database_tools.call_tool("unknown_tool", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Unknown database tool: unknown_tool" in result["error"]
@@ -196,8 +196,8 @@ class TestDatabaseTools:
         """Test exception handling in tool calls."""
         mock_db_connection.execute_query.side_effect = Exception("Database error")
 
-        result_json = await database_tools.call_tool("list_databases", {})
-        result = json.loads(result_json)
+        result_toon = await database_tools.call_tool("list_databases", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Database error" in result["error"]

@@ -6,14 +6,13 @@ Contains tools for database connectivity, exploration, and query execution
 with improved modularity and maintainability.
 """
 
-import json
 from typing import Any, Dict, List
 
 from mcp.types import Tool
+from toon_format import encode as toon_encode
 
 from tools.base.base_tool import BaseTool
 from utils.logger import get_logger, log_tool_call, log_database_operation
-from utils.db import DateTimeEncoder
 
 
 class DatabaseTools(BaseTool):
@@ -167,7 +166,7 @@ class DatabaseTools(BaseTool):
             arguments: Tool arguments
 
         Returns:
-            JSON string with tool execution result
+            TOON string with tool execution result
         """
         try:
             # Log tool call
@@ -187,7 +186,7 @@ class DatabaseTools(BaseTool):
             else:
                 result = {"success": False, "error": f"Unknown database tool: {name}"}
 
-            return json.dumps(result, indent=2, cls=DateTimeEncoder)
+            return toon_encode(result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
 
         except Exception as e:
             self.logger.error(f"Database tool call failed: {e}")
@@ -198,7 +197,7 @@ class DatabaseTools(BaseTool):
                 "tool_name": name,
                 "arguments": arguments,
             }
-            return json.dumps(error_result, indent=2, cls=DateTimeEncoder)
+            return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
 
     async def _connect_database_tool(self) -> Dict[str, Any]:
         """Test database connectivity and return connection information."""

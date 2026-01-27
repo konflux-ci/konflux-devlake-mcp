@@ -97,10 +97,10 @@ class TestLeadTimeTools:
             {"success": True, "data": sample_pr_details},
         ]
 
-        result_json = await lead_time_tools.call_tool(
+        result_toon = await lead_time_tools.call_tool(
             "get_lead_time_for_changes", {"project_name": "Test Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["project_name"] == "Test Project"
@@ -113,8 +113,8 @@ class TestLeadTimeTools:
     @pytest.mark.asyncio
     async def test_get_lead_time_missing_project_name(self, lead_time_tools):
         """Test that get_lead_time_for_changes fails without project_name."""
-        result_json = await lead_time_tools.call_tool("get_lead_time_for_changes", {})
-        result = toon_decode(result_json)
+        result_toon = await lead_time_tools.call_tool("get_lead_time_for_changes", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "project_name is required" in result["error"]
@@ -133,10 +133,10 @@ class TestLeadTimeTools:
             {"success": True, "data": sample_pr_details},
         ]
 
-        result_json = await lead_time_tools.call_tool(
+        result_toon = await lead_time_tools.call_tool(
             "get_lead_time_for_changes", {"project_name": "Test Project", "days_back": 90}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["days_back"] == 90
@@ -155,10 +155,10 @@ class TestLeadTimeTools:
             {"success": True, "data": sample_pr_details[:1]},
         ]
 
-        result_json = await lead_time_tools.call_tool(
+        result_toon = await lead_time_tools.call_tool(
             "get_lead_time_for_changes", {"project_name": "Test Project", "limit": 1}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert len(result["pr_details"]) == 1
@@ -175,10 +175,10 @@ class TestLeadTimeTools:
             {"success": True, "data": []},
         ]
 
-        result_json = await lead_time_tools.call_tool(
+        result_toon = await lead_time_tools.call_tool(
             "get_lead_time_for_changes", {"project_name": "Empty Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["deployed_prs_count"] == 0
@@ -190,10 +190,10 @@ class TestLeadTimeTools:
         """Test handling of database errors."""
         mock_db_connection.execute_query.side_effect = Exception("Database error")
 
-        result_json = await lead_time_tools.call_tool(
+        result_toon = await lead_time_tools.call_tool(
             "get_lead_time_for_changes", {"project_name": "Test Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Database error" in result["error"]
@@ -201,8 +201,8 @@ class TestLeadTimeTools:
     @pytest.mark.asyncio
     async def test_unknown_tool_call(self, lead_time_tools):
         """Test calling an unknown tool."""
-        result_json = await lead_time_tools.call_tool("unknown_tool", {})
-        result = toon_decode(result_json)
+        result_toon = await lead_time_tools.call_tool("unknown_tool", {})
+        result = toon_decode(result_toon)
 
         assert result["success"] is False
         assert "Unknown tool" in result["error"]
@@ -237,10 +237,10 @@ class TestLeadTimeTools:
             {"success": True, "data": sample_pr_details},
         ]
 
-        result_json = await lead_time_tools.call_tool(
+        result_toon = await lead_time_tools.call_tool(
             "get_lead_time_for_changes", {"project_name": "Test Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         breakdown = result["breakdown"]
         assert "avg_coding_time_hours" in breakdown
@@ -267,10 +267,10 @@ class TestLeadTimeTools:
             {"success": True, "data": sample_pr_details},
         ]
 
-        result_json = await lead_time_tools.call_tool(
+        result_toon = await lead_time_tools.call_tool(
             "get_lead_time_for_changes", {"project_name": "Test Project"}
         )
-        result = toon_decode(result_json)
+        result = toon_decode(result_toon)
 
         for pr in result["pr_details"]:
             assert "pr_title" in pr

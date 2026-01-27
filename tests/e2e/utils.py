@@ -2,6 +2,7 @@ import os
 import json
 from litellm import acompletion, Message
 from mcp.types import TextContent
+from toon_format import decode as toon_decode
 
 os.environ.setdefault("LITELLM_LOGGING", "False")
 os.environ.setdefault("LITELLM_VERBOSE", "0")
@@ -116,9 +117,12 @@ def _summarize_tool_output(tool_name, args, raw):
         return s if len(s) <= n else s[: n - 3] + "..."
 
     try:
-        data = json.loads(raw)
+        data = toon_decode(raw)
     except Exception:
-        return _truncate(raw.strip())
+        try:
+            data = json.loads(raw)
+        except Exception:
+            return _truncate(raw.strip())
 
     def _to_list(value):
         if isinstance(value, list):
