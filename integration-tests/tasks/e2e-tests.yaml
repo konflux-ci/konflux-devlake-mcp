@@ -1,0 +1,33 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: e2e-tests
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.50.0"
+    tekton.dev/categories: Testing
+    tekton.dev/tags: python, e2e, testing
+    tekton.dev/displayName: "E2E Tests"
+spec:
+  description: >-
+    Runs E2E tests for konflux-devlake-mcp with MySQL database.
+  params:
+    - name: git-url
+      type: string
+      description: Git repository URL
+    - name: git-revision
+      type: string
+      description: Git revision to checkout
+      default: main
+  steps:
+    - name: hello-world
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        echo "Hello World!"
+        echo "git-url: $(params.git-url)"
+        echo "git-revision: $(params.git-revision)"
+        echo "E2E tests structure works!"
