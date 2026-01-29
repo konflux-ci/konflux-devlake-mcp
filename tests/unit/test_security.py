@@ -37,17 +37,6 @@ class TestSQLInjectionDetector:
             assert is_injection is False
             assert patterns == []
 
-    def test_is_safe_query_select_statements(self, sql_detector):
-        """Test is_safe_query method with SELECT statements."""
-        safe_queries = [
-            "SELECT * FROM incidents",
-            "select id, title from incidents",
-            "SELECT COUNT(*) FROM deployments",
-        ]
-
-        for query in safe_queries:
-            assert sql_detector.is_safe_query(query) is True
-
     def test_dangerous_sql_operations(self, sql_detector):
         """Test detection of dangerous SQL operations."""
         dangerous_queries = [
@@ -236,7 +225,7 @@ class TestKonfluxDevLakeSecurityManager:
         for query in select_queries:
             is_valid, message = security_manager.validate_sql_query(query)
             assert is_valid is True
-            assert "SELECT query allowed" in message
+            assert "Query validation passed" in message
 
     def test_validate_sql_query_dangerous_operations(self, security_manager):
         """Test that dangerous operations are blocked."""
@@ -252,7 +241,7 @@ class TestKonfluxDevLakeSecurityManager:
         for query in dangerous_queries:
             is_valid, message = security_manager.validate_sql_query(query)
             assert is_valid is False
-            assert "Dangerous SQL keyword detected" in message
+            assert "Query doesn't start with SELECT" in message
 
     def test_validate_sql_query_unbalanced_parentheses(self, security_manager):
         """Test detection of unbalanced parentheses."""
@@ -264,15 +253,16 @@ class TestKonfluxDevLakeSecurityManager:
 
         for query in invalid_queries:
             is_valid, message = security_manager.validate_sql_query(query)
-            assert is_valid is True
-            assert "SELECT query allowed" in message
+            assert is_valid is False
+            assert "Unbalanced parentheses" in message
 
     def test_validate_sql_query_too_long(self, security_manager):
         """Test rejection of overly long queries."""
         long_query = "SELECT * FROM incidents WHERE " + "id = 1 OR " * 2000 + "id = 2"
 
         is_valid, message = security_manager.validate_sql_query(long_query)
-        assert is_valid is True
+        assert is_valid is False
+        assert "too long" in message
 
     def test_validate_database_name_valid(self, security_manager):
         """Test validation of valid database names."""
