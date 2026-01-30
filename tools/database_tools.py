@@ -261,52 +261,6 @@ class DatabaseTools(BaseTool):
             if not query:
                 return {"success": False, "error": "Query is required"}
 
-            # Enhanced security validation
-            query_upper = query.strip().upper()
-
-            # Check for dangerous SQL operations (only as whole words)
-            dangerous_keywords = [
-                "DROP",
-                "DELETE",
-                "UPDATE",
-                "INSERT",
-                "CREATE",
-                "ALTER",
-                "TRUNCATE",
-                "GRANT",
-                "REVOKE",
-                "EXEC",
-                "EXECUTE",
-            ]
-
-            for keyword in dangerous_keywords:
-                # Use word boundaries to avoid false positives like "created_date"
-                import re
-
-                pattern = r"\b" + re.escape(keyword) + r"\b"
-                if re.search(pattern, query_upper):
-                    return {
-                        "success": False,
-                        "error": (
-                            f"Query contains dangerous keyword '{keyword}'. "
-                            "Only SELECT queries are allowed for security "
-                            "reasons."
-                        ),
-                        "security_check": "failed",
-                    }
-
-            # Ensure query starts with SELECT
-            if not query_upper.startswith("SELECT"):
-                return {
-                    "success": False,
-                    "error": (
-                        "Query must start with SELECT for security reasons. "
-                        "Only read operations are allowed."
-                    ),
-                    "security_check": "failed",
-                }
-
-            # Log the query for security monitoring
             self.logger.warning(f"Executing custom SQL query: {query[:100]}...")
 
             result = await self.db_connection.execute_query(query, limit)

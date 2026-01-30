@@ -589,8 +589,14 @@ Client Request
 # Example: SQL query validation
 def validate_sql_query(query: str) -> Tuple[bool, str]:
     # Only allows SELECT queries
-    # Blocks DROP, DELETE, INSERT, UPDATE, etc.
+    # Blocks unsupported operations like comments and MYSQL file operations
     # Validates structure and length
+```
+
+```python
+# Example: SQL injection prevention
+def detect_sql_injection(query: str) -> Tuple[bool, str]:
+    # Checks all SQL queries for common SQL injection patterns and blocks them
 ```
 
 **Data Masking**:

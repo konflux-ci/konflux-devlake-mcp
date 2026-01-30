@@ -29,58 +29,34 @@ class KonfluxDevLakeSecurityManager:
             query_lower = query.lower().strip()
 
             # Check if it's a SELECT query - ALLOW ALL SELECT QUERIES
-            if query_lower.startswith("select"):
-                self.logger.info("SELECT query detected - allowing all SELECT operations")
-                return True, "SELECT query allowed"
-
-            # Check for dangerous operations (only for non-SELECT queries)
-            dangerous_keywords = [
-                "drop",
-                "delete",
-                "truncate",
-                "alter",
-                "create",
-                "insert",
-                "update",
-                "grant",
-                "revoke",
-                "backup",
-                "restore",
-                "shutdown",
-                "kill",
-            ]
-
-            # Check for dangerous patterns (only for non-SELECT queries)
-            dangerous_patterns = [
-                r";\s*$",  # Multiple statements
-                r"--",  # SQL comments
-                r"/\*.*?\*/",  # Multi-line comments
-                r"union\s+select",  # UNION attacks
-                r"exec\s*\(",  # Command execution
-                r"xp_cmdshell",  # SQL Server command shell
-            ]
-
-            # Check for dangerous keywords (only for non-SELECT queries)
-            for keyword in dangerous_keywords:
-                if keyword in query_lower:
-                    self.logger.warning(f"Potentially dangerous SQL keyword detected: {keyword}")
-                    return False, f"Dangerous SQL keyword detected: {keyword}"
-
-            # Check for dangerous patterns (only for non-SELECT queries)
-            for pattern in dangerous_patterns:
-                if re.search(pattern, query_lower, re.IGNORECASE):
-                    self.logger.warning(f"Potentially dangerous SQL pattern detected: {pattern}")
-                    return False, "Dangerous SQL pattern detected"
+            if not query_lower.startswith("select"):
+                self.logger.info("Query doesn't start with SELECT - blocking query")
+                raise ValueError("Query doesn't start with SELECT - blocking query")
 
             # Check for balanced parentheses
             if query_lower.count("(") != query_lower.count(")"):
                 self.logger.warning("Unbalanced parentheses in SQL query")
-                return False, "Unbalanced parentheses in SQL query"
+                raise ValueError("Unbalanced parentheses in SQL query")
+
+            # Check for unsupported patterns
+            unsupported_patterns = [
+                r";",  # Multiple statements
+                r"--",  # SQL comments
+                r"/\*.*?\*/",  # Multi-line comments
+                r"\bload_file\b",  # MYSQL file read operations
+                r"\binto\s+(outfile|dumpfile)\b",  # MYSQL file write operations
+            ]
+
+            # Check for forbiden patterns
+            for pattern in unsupported_patterns:
+                if re.search(pattern, query_lower, re.IGNORECASE):
+                    self.logger.warning(f"Unsupported pattern detected: {pattern}")
+                    raise ValueError(f"Unsupported pattern detected: {pattern}")
 
             # Check for reasonable query length
             if len(query) > 10000:  # 10KB limit
                 self.logger.warning("SQL query too long")
-                return False, "SQL query too long"
+                raise ValueError("SQL query too long")
 
             return True, "Query validation passed"
 
@@ -271,39 +247,15 @@ class SQLInjectionDetector:
 
         # Common SQL injection patterns (excluding SELECT patterns)
         self.injection_patterns = [
-            r"(\b(insert|update|delete|drop|create|alter|exec|execute)\b)",
-            r"(--|\#|\/\*|\*\/)",
-            r"(\b(and|or)\b\s+\d+\s*=\s*\d+)",
-            r"(\b(and|or)\b\s+['\"][^'\"]*['\"])",
-            r"(\b(and|or)\b\s+\d+\s*=\s*['\"][^'\"]*['\"])",
-            r"(\b(union)\b\s+\b(all|distinct)\b)",
-            r"(\b(union)\b\s+\b(into)\b)",
-            r"(\b(union)\b\s+\b(where|group|order|having|limit)\b)",
-            r"(\b(union)\b\s+\b(and|or|not)\b)",
-            r"(\b(union)\b\s+\b(like|in|between|exists)\b)",
-            r"(\b(union)\b\s+\b(count|sum|avg|min|max)\b)",
-            r"(\b(union)\b\s+\b(distinct|top|limit|offset)\b)",
-            r"(\b(union)\b\s+\b(case|when|then|else|end)\b)",
-            r"(\b(union)\b\s+\b(if|elseif|else|endif)\b)",
-            r"(\b(union)\b\s+\b(while|for|loop|repeat|until)\b)",
-            r"(\b(union)\b\s+\b(break|continue|return|exit)\b)",
-            r"(\b(union)\b\s+\b(declare|set|begin|end)\b)",
-            r"(\b(union)\b\s+\b(procedure|function|trigger|event)\b)",
-            r"(\b(union)\b\s+\b(transaction|commit|rollback)\b)",
-            r"(\b(union)\b\s+\b(lock|unlock|grant|revoke)\b)",
+            r"(\b(insert|update|delete|drop|create|alter|truncate|exec|xp_cmdshell|execute)\b)",
         ]
 
     def detect_sql_injection(self, query: str) -> Tuple[bool, List[str]]:
-        """Detect potential SQL injection in query - ALLOWS ALL SELECT QUERIES"""
+        """Detect potential SQL injection in query"""
         if not query:
             return False, []
 
-        # Allow all SELECT queries
         query_lower = query.lower().strip()
-        if query_lower.startswith("select"):
-            self.logger.info("SELECT query detected - allowing all SELECT operations")
-            return False, []
-
         detected_patterns = []
 
         for pattern in self.injection_patterns:
@@ -316,15 +268,6 @@ class SQLInjectionDetector:
             return True, detected_patterns
 
         return False, []
-
-    def is_safe_query(self, query: str) -> bool:
-        """Check if query is safe - ALLOWS ALL SELECT QUERIES"""
-        # Allow all SELECT queries
-        if query.lower().strip().startswith("select"):
-            return True
-
-        is_injection, _ = self.detect_sql_injection(query)
-        return not is_injection
 
 
 class DataMasking:
