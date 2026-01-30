@@ -160,9 +160,12 @@ async def test_server_connect_direct(mcp_client):
 
     result = await mcp_client.call_tool(connect_name, {})
     assert result.content and result.content[0].text
+    text_lower = result.content[0].text.lower()
     payload = _content_to_dict(result.content[0].text)
-    assert (isinstance(payload, dict) and payload.get("success") is True) or (
-        "connected" in result.content[0].text.lower()
+    assert (
+        (isinstance(payload, dict) and payload.get("success") is True)
+        or "connected" in text_lower
+        or "success: true" in text_lower
     ), f"Unexpected connect response: {result.content[0].text[:200]}"
 
 

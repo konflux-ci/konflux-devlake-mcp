@@ -1,0 +1,186 @@
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: e2e-tests-pipeline
+spec:
+  description: Pipeline for running E2E tests with MySQL database.
+  params:
+    - name: SNAPSHOT
+      description: The JSON string representing the snapshot of the application under test.
+      default: '{"components": [{"name":"test-app", "containerImage": "quay.io/example/repo:latest"}]}'
+      type: string
+    - name: test-name
+      description: The name of the test corresponding to a defined Konflux integration test.
+      default: ''
+      type: string
+  tasks:
+    - name: test-metadata
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tasks/test-metadata/0.1/test-metadata.yaml
+      params:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+        - name: test-name
+          value: $(context.pipelineRun.name)
+    - name: e2e-tests
+      runAfter:
+        - test-metadata
+      taskSpec:
+        params:
+          - name: git-url
+            type: string
+            description: Git repository URL
+          - name: git-revision
+            type: string
+            description: Git revision to checkout
+          - name: TEST_DB_HOST
+            type: string
+            default: "127.0.0.1"
+          - name: TEST_DB_PORT
+            type: string
+            default: "3306"
+          - name: TEST_DB_USER
+            type: string
+            default: "devlake"
+          - name: TEST_DB_PASSWORD
+            type: string
+            default: "devlake_password"
+          - name: TEST_DB_NAME
+            type: string
+            default: "lake"
+          - name: MYSQL_ROOT_PASSWORD
+            type: string
+            default: "test_password"
+        sidecars:
+          - name: mysql
+            image: mysql:8.0
+            env:
+              - name: MYSQL_ROOT_PASSWORD
+                value: $(params.MYSQL_ROOT_PASSWORD)
+              - name: MYSQL_DATABASE
+                value: $(params.TEST_DB_NAME)
+              - name: MYSQL_USER
+                value: $(params.TEST_DB_USER)
+              - name: MYSQL_PASSWORD
+                value: $(params.TEST_DB_PASSWORD)
+            readinessProbe:
+              exec:
+                command:
+                  - mysqladmin
+                  - ping
+                  - -h
+                  - localhost
+                  - -u
+                  - root
+                  - -ptest_password
+              initialDelaySeconds: 10
+              periodSeconds: 5
+              timeoutSeconds: 5
+              failureThreshold: 20
+        steps:
+          - name: clone-repository
+            image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+            script: |
+              #!/usr/bin/env bash
+              set -e
+              microdnf install -y git
+              git config --global --add safe.directory /workspace/source
+              echo "Cloning $(params.git-url) at revision $(params.git-revision)..."
+              git clone $(params.git-url) /workspace/source
+              cd /workspace/source
+              git checkout $(params.git-revision)
+              chmod -R 777 /workspace/source
+              echo "Clone completed!"
+
+          - name: wait-for-mysql
+            image: mysql:8.0
+            script: |
+              #!/usr/bin/env bash
+              set -e
+              echo "Waiting for MySQL to be ready..."
+              for i in $(seq 1 60); do
+                if mysqladmin ping -h 127.0.0.1 -u root -ptest_password --silent 2>/dev/null; then
+                  echo "MySQL is ready!"
+                  exit 0
+                fi
+                echo "Waiting for MySQL... ($i/60)"
+                sleep 2
+              done
+              echo "MySQL did not become ready in time"
+              exit 1
+
+          - name: setup-database
+            image: mysql:8.0
+            workingDir: /workspace/source
+            script: |
+              #!/usr/bin/env bash
+              set -e
+              echo "Initializing test database schema and data..."
+
+              mysql -h 127.0.0.1 -P 3306 -u root -p$(params.MYSQL_ROOT_PASSWORD) -e \
+                "DROP DATABASE IF EXISTS $(params.TEST_DB_NAME); CREATE DATABASE $(params.TEST_DB_NAME);"
+
+              mysql -h 127.0.0.1 -P 3306 -u root -p$(params.MYSQL_ROOT_PASSWORD) $(params.TEST_DB_NAME) \
+                < testdata/mysql/01-schema.sql
+
+              mysql -h 127.0.0.1 -P 3306 -u root -p$(params.MYSQL_ROOT_PASSWORD) $(params.TEST_DB_NAME) \
+                < testdata/mysql/02-test-data.sql
+
+              echo "Database initialized successfully!"
+
+          - name: run-e2e-tests
+            image: registry.access.redhat.com/ubi9/python-311:latest
+            workingDir: /workspace/source
+            env:
+              - name: TEST_DB_HOST
+                value: $(params.TEST_DB_HOST)
+              - name: TEST_DB_PORT
+                value: $(params.TEST_DB_PORT)
+              - name: TEST_DB_USER
+                value: $(params.TEST_DB_USER)
+              - name: TEST_DB_PASSWORD
+                value: $(params.TEST_DB_PASSWORD)
+              - name: TEST_DB_NAME
+                value: $(params.TEST_DB_NAME)
+              - name: LITELLM_LOGGING
+                value: "0"
+              - name: LITELLM_DISABLE_LOGGING
+                value: "1"
+              - name: LITELLM_VERBOSE
+                value: "0"
+              - name: LITELLM_LOGGING_QUEUE
+                value: "0"
+              - name: E2E_DB_WAIT_SECS
+                value: "45"
+              - name: GEMINI_API_KEY
+                valueFrom:
+                  secretKeyRef:
+                    name: gemini-api-key
+                    key: GEMINI_API_KEY
+              - name: PYTHONPATH
+                value: /workspace/source
+            script: |
+              #!/usr/bin/env bash
+              set -e
+
+              echo "Installing dependencies..."
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+
+              echo "Running E2E tests..."
+              pytest tests/e2e -vv --maxfail=1 --tb=short
+
+              echo "E2E tests completed successfully!"
+      params:
+        - name: git-url
+          value: $(tasks.test-metadata.results.git-url)
+        - name: git-revision
+          value: $(tasks.test-metadata.results.git-revision)
