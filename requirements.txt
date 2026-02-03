@@ -18,6 +18,10 @@ bcrypt>=4.0.0
 # OIDC/OAuth2 authentication (Red Hat SSO / Keycloak)
 PyJWT>=2.8.0
 httpx>=0.27.0
+    
+# LDAP for Rover group lookups (RBAC)
+pyasn1==0.6.2
+ldap3>=2.9.0
 
 # Logging and monitoring
 python-json-logger>=2.0.0

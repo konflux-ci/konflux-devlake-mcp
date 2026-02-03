@@ -15,6 +15,7 @@ from mcp.types import Tool, TextContent
 from server.handlers.tool_handler import ToolHandler
 from server.transport.base_transport import BaseTransport
 from utils.logger import get_logger
+from utils.rbac import AuthorizationService
 
 
 class KonfluxDevLakeMCPServer:
@@ -39,11 +40,25 @@ class KonfluxDevLakeMCPServer:
         self.db_connection = db_connection
         self.tools_manager = tools_manager
         self.security_manager = security_manager
+        self.logger = get_logger(f"{__name__}.KonfluxDevLakeMCPServer")
+
+        # Initialize RBAC - enabled when OIDC is enabled
+        rbac_enabled = False
+        if hasattr(config, "oidc") and config.oidc.enabled:
+            rbac_enabled = True
+            self.logger.info("RBAC enabled (OIDC authentication is active)")
+        else:
+            self.logger.info("RBAC disabled (OIDC authentication is not active)")
 
         # Initialize core components
         self.server = Server("konflux-devlake-mcp-server")
-        self.tool_handler = ToolHandler(tools_manager, security_manager)
-        self.logger = get_logger(f"{__name__}.KonfluxDevLakeMCPServer")
+        self.authorization_service = AuthorizationService() if rbac_enabled else None
+        self.tool_handler = ToolHandler(
+            tools_manager,
+            security_manager,
+            authorization_service=self.authorization_service,
+            rbac_enabled=rbac_enabled,
+        )
 
         # Setup protocol handlers
         self._setup_protocol_handlers()
