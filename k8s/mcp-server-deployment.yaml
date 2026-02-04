@@ -34,7 +34,8 @@ spec:
           type: RuntimeDefault
       volumes:
         - name: logs-volume
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: konflux-devlake-mcp-logs
       containers:
         - name: mcp-server
           image: quay.io/konflux-ci/konflux-devprod/devlake-mcp-server:latest

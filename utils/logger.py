@@ -7,11 +7,30 @@ import logging
 import logging.handlers
 import os
 import sys
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Optional
 
 # Global logger instance
 _logger_instance: Optional[logging.Logger] = None
+
+# Context variable to track current client ID for tool call logging
+client_id_var: ContextVar[Optional[str]] = ContextVar("client_id", default=None)
+
+
+def set_client_id(client_id: str) -> None:
+    """Set the current client ID for logging context."""
+    client_id_var.set(client_id)
+
+
+def get_client_id() -> Optional[str]:
+    """Get the current client ID from logging context."""
+    return client_id_var.get()
+
+
+def clear_client_id() -> None:
+    """Clear the current client ID from logging context."""
+    client_id_var.set(None)
 
 
 def get_logger(name: str = None) -> logging.Logger:
@@ -204,15 +223,19 @@ def log_database_operation(
 
 
 def log_tool_call(tool_name: str, arguments: dict = None, success: bool = True, error: str = None):
-    """Log tool calls"""
+    """Log tool calls with client ID for traceability."""
     logger = get_logger("tool_calls")
 
+    # Get client ID from context for traceability
+    client_id = get_client_id()
+    client_info = f" by client={client_id}" if client_id else ""
+
     if success:
-        logger.info(f"Tool '{tool_name}' called successfully")
+        logger.info(f"Tool '{tool_name}' called{client_info}")
         if arguments:
             logger.debug(f"Arguments: {arguments}")
     else:
-        logger.error(f"Tool '{tool_name}' failed: {error}")
+        logger.error(f"Tool '{tool_name}' failed{client_info}: {error}")
         if arguments:
             logger.debug(f"Failed arguments: {arguments}")
 

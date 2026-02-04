@@ -8,6 +8,7 @@ resources:
   # - namespace.yaml
   - serviceaccount.yaml
   - configmap.yaml
+  - mcp-logs-pvc.yaml
   - mcp-server-deployment.yaml
   - mcp-server-service.yaml
   - route.yaml
