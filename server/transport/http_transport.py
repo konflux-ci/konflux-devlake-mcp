@@ -14,7 +14,7 @@ from anyio import ClosedResourceError
 
 from server.transport.base_transport import BaseTransport
 from server.middleware.auth_middleware import create_auth_middleware
-from utils.logger import get_logger
+from utils.logger import get_logger, set_client_id, clear_client_id
 
 
 class HttpTransport(BaseTransport):
@@ -229,6 +229,39 @@ class HttpTransport(BaseTransport):
         """Create ASGI app that handles MCP requests with improved error handling."""
         from starlette.responses import Response
         from anyio import ClosedResourceError
+        import hashlib
+
+        # Logger for client inventory (compliance tracking)
+        client_inventory_logger = get_logger("client_inventory")
+
+        def _get_client_info(scope):
+            """Extract client info from request scope for inventory logging.
+
+            Note: IP addresses are hashed to avoid logging PII.
+            """
+            headers = dict(scope.get("headers", []))
+
+            # Get IP address (check forwarded headers first)
+            client_ip = None
+            for header in [b"x-forwarded-for", b"x-real-ip"]:
+                if header in headers:
+                    client_ip = headers[header].decode("utf-8").split(",")[0].strip()
+                    break
+            if not client_ip:
+                client = scope.get("client")
+                client_ip = client[0] if client else "unknown"
+
+            # Get user agent
+            user_agent = headers.get(b"user-agent", b"unknown").decode("utf-8")
+
+            # Generate client ID (hash of IP + user-agent for privacy)
+            client_id_raw = f"{client_ip}:{user_agent}"
+            client_id = hashlib.sha256(client_id_raw.encode()).hexdigest()[:12]
+
+            # Hash the IP address to avoid logging PII
+            ip_hash = hashlib.sha256(client_ip.encode()).hexdigest()[:8]
+
+            return client_id, ip_hash, user_agent
 
         async def mcp_app(scope, receive, send):
             try:
@@ -240,6 +273,14 @@ class HttpTransport(BaseTransport):
                         return
 
                     if path == "/mcp" or path.startswith("/mcp/"):
+                        # Log client connection for inventory (compliance)
+                        client_id, client_ip, user_agent = _get_client_info(scope)
+                        client_inventory_logger.info(
+                            f"Client request: id={client_id}, ip={client_ip}, agent={user_agent}"
+                        )
+
+                        # Set client ID context for tool call logging (traceability)
+                        set_client_id(client_id)
                         try:
                             self.logger.debug(f"Handling MCP request: {path}")
                             await self._session_manager.handle_request(scope, receive, send)
@@ -265,6 +306,9 @@ class HttpTransport(BaseTransport):
                                 self.logger.debug(
                                     "Connection closed before error response could be sent"
                                 )
+                        finally:
+                            # Clear client ID context after request
+                            clear_client_id()
                         return
 
                     # 404 for other paths
