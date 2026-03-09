@@ -1,6 +1,5 @@
 ---
 codecov:
-  token:  # Set via CODECOV_TOKEN secret in GitHub Actions
   require_ci_to_pass: true
 
 coverage:
@@ -21,6 +20,10 @@ coverage:
         target: 70%
         threshold: 1%
 
+flags:
+  unit-tests:
+    carryforward: true
+
 ignore:
   - "tests/"
   - "venv/"
@@ -32,6 +35,6 @@ ignore:
   - "testdata/"
 
 comment:
-  layout: "reach,diff,flags,tree,reach"
+  layout: "reach,diff,flags,files"
   behavior: default
   require_changes: false
