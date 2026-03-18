@@ -1,0 +1,26 @@
+# Scheduled Analysis Workflow
+# Triggers child pipelines based on SCHEDULER_TYPE variable
+#
+# Set SCHEDULER_TYPE in GitLab schedule configuration to target specific reports.
+
+{% for category in categories %}
+# Trigger {{ category.name }} Child Pipeline
+trigger_{{ category.key }}:
+  stage: trigger
+  trigger:
+    include: .gitlab/child-pipelines/{{ category.key }}.yml
+    strategy: depend
+    forward:
+      yaml_variables: true
+      pipeline_variables: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULER_TYPE == "{{ category.key }}"
+{%- if category.key in ['dora', 'engineering_excellence', 'pr_cycle_time'] %}
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULER_TYPE == "dora_all"
+{%- endif %}
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULER_TYPE == "all"
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULER_TYPE == null
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+
+{% endfor %}

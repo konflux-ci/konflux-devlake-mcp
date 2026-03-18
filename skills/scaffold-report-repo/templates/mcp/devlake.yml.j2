@@ -1,0 +1,17 @@
+# DevLake MCP Server Configuration
+# Configure the DEVLAKE_MCP_ENDPOINT and DEVLAKE_AUTH_TOKEN CI/CD variables
+# in your GitLab project settings (Settings > CI/CD > Variables)
+
+.mcp_devlake:
+  variables:
+    MCP_DEVLAKE_CONFIG: >-
+      {
+        "name": "devlake",
+        "protocol": "http",
+        "endpoint": "$DEVLAKE_MCP_ENDPOINT",
+        "headers": {
+          "Authorization": "Bearer $DEVLAKE_AUTH_TOKEN"
+        },
+        "timeout": 300,
+        "idle_timeout": 60
+      }

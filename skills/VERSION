@@ -1,0 +1,5 @@
+# Deployed MCP server version that these skills are validated against.
+# Update this after each production deployment.
+# Skills referencing tools/schema newer than this version should be marked
+# with "(requires MCP >= vX.Y.Z)" in their SKILL.md.
+1.1.0

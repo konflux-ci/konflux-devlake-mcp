@@ -1,0 +1,77 @@
+# GitLab Pages Deployment
+# Collects HTML report artifacts and publishes to GitLab Pages
+
+pages:
+  stage: publish
+  image:
+    name: quay.io/centos/centos:stream10
+    pull_policy: [always, if-not-present]
+  tags:
+    - "{{ runner_tags }}"
+
+  before_script:
+    - dnf install -y tree curl jq bash unzip
+
+  script:
+    - mkdir -p public
+    # Collect artifacts from child pipelines (with pagination)
+    - |
+      PER_PAGE=100
+      PAGE=1
+      while true; do
+        BRIDGES=$(curl -s --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/bridges?per_page=$PER_PAGE&page=$PAGE")
+        BRIDGE_IDS=$(echo "$BRIDGES" | jq -r '.[].downstream_pipeline.id // empty')
+        [ -z "$BRIDGE_IDS" ] && break
+        for bridge_id in $BRIDGE_IDS; do
+          for job_id in $(curl -s --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
+            "$CI_API_V4_URL/projects/$CI_PROJECT_ID/pipelines/$bridge_id/jobs" \
+            | jq -r '.[] | select(.artifacts_file != null) | .id'); do
+            curl -s --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
+              "$CI_API_V4_URL/projects/$CI_PROJECT_ID/jobs/$job_id/artifacts" \
+              -o artifacts.zip && unzip -o artifacts.zip -d public/ && rm -f artifacts.zip
+          done
+        done
+        PAGE=$((PAGE + 1))
+      done
+
+    # Verify artifacts were collected
+    - |
+      ARTIFACT_COUNT=$(find public -name "*.html" 2>/dev/null | wc -l)
+      echo "Collected $ARTIFACT_COUNT HTML artifacts"
+      if [ "$ARTIFACT_COUNT" -eq 0 ]; then
+        echo "WARNING: No HTML artifacts found. Check child pipeline jobs."
+      fi
+
+    # Generate HTML index
+    - cd public
+    - |
+      tree -H '.' -L 4 -F \
+        --noreport \
+        --charset utf-8 \
+        -T "{{ project_name }} Reports" \
+        -P "*.html|latest" \
+        --dirsfirst \
+        -o index.html
+
+    # Add timestamp
+    - |
+      sed -i 's|</body></html>||g' index.html
+      echo "<p><strong>Last updated:</strong> $(date -u '+%Y-%m-%d %H:%M:%S UTC')</p>" >> index.html
+      echo "<p><strong>Pipeline:</strong> <a href=\"$CI_PIPELINE_URL\">#$CI_PIPELINE_ID</a></p>" >> index.html
+      echo "</body></html>" >> index.html
+
+  artifacts:
+    paths:
+      - public
+    expire_in: 30 days
+
+  rules:
+    - if: $SKIP_PAGES_DEPLOY == "true"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: always
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual

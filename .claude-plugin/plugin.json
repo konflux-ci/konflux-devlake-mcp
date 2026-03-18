@@ -1,0 +1,12 @@
+{
+  "name": "konflux-devlake",
+  "description": "DevLake engineering metrics skills — query data, generate reports, and scaffold automated report repos using the Konflux DevLake MCP server",
+  "version": "0.1.0",
+  "author": {
+    "name": "Konflux CI"
+  },
+  "homepage": "https://github.com/konflux-ci/konflux-devlake-mcp",
+  "repository": "https://github.com/konflux-ci/konflux-devlake-mcp",
+  "license": "Apache-2.0",
+  "keywords": ["devlake", "dora", "metrics", "engineering", "reports", "mcp"]
+}

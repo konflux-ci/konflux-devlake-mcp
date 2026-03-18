@@ -1,0 +1,50 @@
+# CI/CD Variables Setup
+
+Configure these variables in your GitLab project settings:
+**Settings > CI/CD > Variables**
+
+## Required Variables
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `DEVLAKE_MCP_ENDPOINT` | Variable | DevLake MCP server URL (e.g., `https://your-devlake-mcp/mcp`) |
+| `DEVLAKE_AUTH_TOKEN` | Variable (Masked) | Authentication token for DevLake MCP server |
+
+## AI Provider Variables
+
+| Variable | Type | Description |
+|----------|------|-------------|
+{% if ai_provider == 'gemini' %}
+| `GEMINI_API_KEY` | Variable (Masked) | Gemini API key |
+{% elif ai_provider == 'openai' %}
+| `OPENAI_API_KEY` | Variable (Masked) | OpenAI API key |
+{% elif ai_provider == 'claude' %}
+| `ANTHROPIC_API_KEY` | Variable (Masked) | Anthropic API key |
+{% endif %}
+
+## Optional Variables
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `ANALYSIS_DAYS` | Variable | `30` | Number of days to analyze |
+| `SCHEDULER_TYPE` | Variable | `all` | Which report categories to run (set per schedule) |
+| `AI_MODEL` | Variable | Provider default | Override AI model |
+{% if slack_enabled %}
+| `SLACK_WEBHOOK_URL` | Variable (Masked) | — | Slack webhook for notifications |
+{% endif %}
+{% if ca_cert_url %}
+| `CUSTOM_CA_CERT_URL` | Variable | `{{ ca_cert_url }}` | Custom CA certificate bundle URL (override the default if cert location changes) |
+{% endif %}
+| `SKIP_PAGES_DEPLOY` | Variable | `false` | Set to `true` to skip Pages deployment |
+
+## Schedule Configuration
+
+Create GitLab schedules (**CI/CD > Schedules**) with `SCHEDULER_TYPE` to run specific reports:
+
+| Schedule | SCHEDULER_TYPE | Reports |
+|----------|---------------|---------|
+{% for category in categories %}
+| {{ category.name }} | `{{ category.key }}` | {{ category.name }} only |
+{% endfor %}
+| All Delivery Metrics | `dora_all` | DORA + Engineering Excellence + PR Cycle Time |
+| Full Suite | `all` | All report categories |
