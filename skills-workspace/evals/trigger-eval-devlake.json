@@ -1,0 +1,82 @@
+[
+  {
+    "query": "hey can you check how many PRs got merged in the konflux-ci org last week? my manager is asking for the numbers for the standup",
+    "should_trigger": true
+  },
+  {
+    "query": "what's our deployment frequency looking like for the last 30 days? I need to know if we're hitting elite DORA benchmarks or not",
+    "should_trigger": true
+  },
+  {
+    "query": "our CI is super flaky lately, can you pull up the github actions health for the build-service repo and show me which workflows are failing the most?",
+    "should_trigger": true
+  },
+  {
+    "query": "I want to understand the PR review bottleneck - what's the average pickup time vs review time for the release-service team? break it down by repo if you can",
+    "should_trigger": true
+  },
+  {
+    "query": "show me the codecov coverage trends for our repos over the past quarter, specifically anything that dropped below 60%",
+    "should_trigger": true
+  },
+  {
+    "query": "how many times did PRs in integration-service get /retest'd last month? which tests are causing the most retests?",
+    "should_trigger": true
+  },
+  {
+    "query": "what's the lead time from first commit to merge for PRs in our org? I want to compare it against DORA benchmarks",
+    "should_trigger": true
+  },
+  {
+    "query": "can you check the build success rates across all our repos? I think something broke in the e2e tests last sprint",
+    "should_trigger": true
+  },
+  {
+    "query": "generate me a nice HTML report with DORA metrics for the konflux-ci org, I want to present it at the team meeting",
+    "should_trigger": false
+  },
+  {
+    "query": "I need to set up a new gitlab repo that will automatically run weekly engineering reports using DevLake data and publish them to gitlab pages",
+    "should_trigger": false
+  },
+  {
+    "query": "can you help me write a python script that connects to our mysql database and queries the pull_requests table?",
+    "should_trigger": false
+  },
+  {
+    "query": "read the file at src/tools/pr-stats.ts and add better error handling for when the database connection times out",
+    "should_trigger": false
+  },
+  {
+    "query": "what's the difference between lead time and cycle time in DORA metrics? just explain the concepts, don't look anything up",
+    "should_trigger": false
+  },
+  {
+    "query": "help me debug this SQL query, it's returning duplicate rows when I join pull_requests with repos",
+    "should_trigger": false
+  },
+  {
+    "query": "our jira board has a bunch of features marked as done but I want to cross-reference them with what actually shipped. can you pull the feature data from devlake?",
+    "should_trigger": true
+  },
+  {
+    "query": "what incidents have we had in production in the last 90 days? group them by severity and show me the mean time to recovery",
+    "should_trigger": true
+  },
+  {
+    "query": "I need to add a new MCP tool to the devlake server that returns retest data grouped by test suite name",
+    "should_trigger": false
+  },
+  {
+    "query": "compare the PR throughput between team-alpha and team-beta for february - who's shipping faster and where are the bottlenecks?",
+    "should_trigger": true
+  },
+  {
+    "query": "set up the devlake mcp server configuration in my .claude/settings.json so I can query it from claude code",
+    "should_trigger": false
+  },
+  {
+    "query": "can you look at the historical trend for our change failure rate? I think it's been getting worse since we switched to the new pipeline",
+    "should_trigger": true
+  }
+]

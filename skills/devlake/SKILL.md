@@ -1,9 +1,17 @@
 ---
 name: devlake
 description: >
-  Trigger when the user asks about PR stats, DORA metrics, deployment frequency,
-  code coverage, CI health, build success rates, flaky tests, retest patterns,
-  lead time, or any engineering metrics question that requires DevLake data.
+  This skill should be used whenever the user asks about engineering metrics,
+  software delivery performance, or team productivity data — including PR statistics,
+  DORA metrics (deployment frequency, lead time, change failure rate, recovery time),
+  code coverage, CI/CD health, build success rates, flaky or failing tests, retest
+  patterns, PR cycle time (coding time, pickup time, review time), merge throughput,
+  incidents, or Jira feature tracking. Use this skill even when the user doesn't
+  mention "DevLake" explicitly — any question about "how many PRs", "what's our
+  deploy rate", "which tests are flaky", "compare team metrics", "coverage trends",
+  "build failures", or "change failure rate" should trigger this skill. Also trigger
+  for cross-team comparisons, historical trend analysis, bottleneck identification,
+  and any request to query or analyze engineering data from repositories.
 ---
 
 # DevLake Query Skill
