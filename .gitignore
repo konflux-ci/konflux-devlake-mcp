@@ -308,3 +308,4 @@ htmlcov/
 .coverage.*
 coverage.xml
 *.cover
+skills-workspace/
