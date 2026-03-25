@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+  ═══════════════════════════════════════════════════════════════════════════════
+  DEVLAKE REPORT TEMPLATE - Dark Theme Design System
+  ═══════════════════════════════════════════════════════════════════════════════
+
+  Universal template for ALL DevLake HTML reports:
+  - DORA Metrics Reports
+  - PR Cycle Time Reports
+  - Engineering Excellence Reports
+  - Code Coverage Reports
+  - Retest Analysis Reports
+
+  AI-generated reports MUST follow this exact styling and use these CSS classes.
+  The BODY CONTENT is report-specific - only the CSS design system and component
+  library below are universal. Each report type defines its own sections, metrics
+  grid cards, and tables based on its DSPy task file outputs.
+
+  DO NOT MODIFY:
+  - Color scheme (CSS variables)
+  - Font families
+  - Border radius values
+  - Spacing/padding values
+  - Component class names or structure
+
+  PLACEHOLDERS (replace with actual data):
+  - {{REPORT_TITLE}} - Main report title (e.g., "DORA Metrics Report")
+  - {{REPORT_SUBTITLE}} - Subtitle or scope description
+  - {{REPORT_ICON}} - Emoji icon for the report type
+  - {{BADGE_LABEL}} - Badge text (e.g., team name, org name)
+  - {{BADGE_ICON}} - Badge emoji
+  - {{REPORT_DATE}} - Generation date
+  - {{ANALYSIS_DAYS}} - Number of days analyzed
+
+  ═══════════════════════════════════════════════════════════════════════════════
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{REPORT_TITLE}}</title>
+
+    <!-- REQUIRED FONTS - DO NOT CHANGE -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* ═══════════════════════════════════════════════════════════════════════
+           CSS VARIABLES - DO NOT MODIFY THESE VALUES
+           ═══════════════════════════════════════════════════════════════════════ */
+        :root {
+            /* Background colors - Dark theme */
+            --bg-primary: #0a0f1a;
+            --bg-secondary: #111827;
+            --bg-tertiary: #1f2937;
+
+            /* Accent colors */
+            --accent-primary: #3b82f6;    /* Blue - primary actions, links */
+            --accent-secondary: #06b6d4;  /* Cyan - info, neutral metrics */
+            --accent-success: #22c55e;    /* Green - good/success states */
+            --accent-warning: #f59e0b;    /* Amber - warning states */
+            --accent-danger: #ef4444;     /* Red - critical/error states */
+
+            /* Text colors */
+            --text-primary: #f9fafb;      /* Main text */
+            --text-secondary: #9ca3af;    /* Secondary text, labels */
+            --text-muted: #6b7280;        /* Muted text, footnotes */
+
+            /* Border */
+            --border-color: rgba(59, 130, 246, 0.2);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           BASE STYLES
+           ═══════════════════════════════════════════════════════════════════════ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           LAYOUT - Container
+           ═══════════════════════════════════════════════════════════════════════ */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           NAVIGATION - Back Link
+           ═══════════════════════════════════════════════════════════════════════ */
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+            transition: color 0.2s;
+        }
+
+        .back-link:hover {
+            color: var(--accent-primary);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           HEADER
+           ═══════════════════════════════════════════════════════════════════════ */
+        .header {
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .team-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: var(--accent-primary);
+        }
+
+        .report-date {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        h1 span {
+            color: var(--accent-primary);
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           METRICS GRID - Flexible card layout
+           Use 3-8 cards depending on report type. Grid auto-fits.
+           ═══════════════════════════════════════════════════════════════════════ */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .metric-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.25rem;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+
+        /* Metric value colors - apply based on data thresholds */
+        .metric-value.success { color: var(--accent-success); }
+        .metric-value.warning { color: var(--accent-warning); }
+        .metric-value.danger { color: var(--accent-danger); }
+        .metric-value.info { color: var(--accent-secondary); }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           METRICS EXPLANATION BOX
+           ═══════════════════════════════════════════════════════════════════════ */
+        .metrics-explanation {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .metrics-explanation h4 {
+            margin-bottom: 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .metrics-explanation-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           SECTION CONTAINER
+           ═══════════════════════════════════════════════════════════════════════ */
+        .section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .section-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .section-icon {
+            width: 32px;
+            height: 32px;
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+        }
+
+        /* Section Anchor Links */
+        .section-anchor {
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section-anchor:hover {
+            text-decoration: none;
+        }
+
+        .section-anchor:hover .anchor-hash,
+        .section-anchor:focus .anchor-hash {
+            opacity: 1;
+        }
+
+        .section-anchor .anchor-hash {
+            opacity: 0;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 400;
+            transition: opacity 0.2s;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           EXPLANATION BOX - Place before data tables
+           ═══════════════════════════════════════════════════════════════════════ */
+        .explanation-box {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .explanation-box h4 {
+            margin-bottom: 0.5rem;
+            color: var(--accent-primary);
+            font-size: 0.9rem;
+        }
+
+        .explanation-box ul {
+            margin-left: 1.5rem;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .explanation-box p {
+            margin-top: 0.75rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .explanation-box.critical {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.2);
+        }
+
+        .explanation-box.critical h4 {
+            color: var(--accent-danger);
+        }
+
+        .explanation-box.warning {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: rgba(245, 158, 11, 0.2);
+        }
+
+        .explanation-box.warning h4 {
+            color: var(--accent-warning);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           EXECUTIVE SUMMARY BOX
+           ═══════════════════════════════════════════════════════════════════════ */
+        .executive-summary {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(6, 182, 212, 0.1) 100%);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .executive-summary h3 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            color: var(--accent-primary);
+        }
+
+        .executive-summary p {
+            margin-bottom: 1rem;
+            line-height: 1.8;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           TABLES
+           ═══════════════════════════════════════════════════════════════════════ */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background: var(--bg-tertiary);
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+
+        tr:hover {
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           STATUS BADGES
+           ═══════════════════════════════════════════════════════════════════════ */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status-healthy {
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--accent-success);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .status-warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--accent-warning);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .status-critical {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--accent-danger);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           PRIORITY TAGS
+           ═══════════════════════════════════════════════════════════════════════ */
+        .priority-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .priority-p0 {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+
+        .priority-p1 {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+        }
+
+        .priority-p2 {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           HIGHLIGHT BOXES
+           ═══════════════════════════════════════════════════════════════════════ */
+        .highlight-box {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .highlight-box.warning {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: rgba(245, 158, 11, 0.3);
+        }
+
+        .highlight-box.critical {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .highlight-box.info {
+            background: rgba(6, 182, 212, 0.1);
+            border-color: rgba(6, 182, 212, 0.3);
+        }
+
+        .highlight-box h4 {
+            margin-bottom: 0.5rem;
+        }
+
+        .highlight-box ol, .highlight-box ul {
+            margin-left: 1.5rem;
+            margin-top: 0.5rem;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           CHART CONTAINER
+           ═══════════════════════════════════════════════════════════════════════ */
+        .chart-container {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .chart-container canvas {
+            max-height: 400px;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           LINKS
+           ═══════════════════════════════════════════════════════════════════════ */
+        a {
+            color: var(--accent-primary);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           FOOTER
+           ═══════════════════════════════════════════════════════════════════════ */
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .footer p {
+            margin-top: 0.5rem;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════
+           RESPONSIVE
+           ═══════════════════════════════════════════════════════════════════════ */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .header-top {
+                flex-direction: column;
+                gap: 0.5rem;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!--
+    ═══════════════════════════════════════════════════════════════════════════════
+    USAGE GUIDE - How to build a report using this template
+    ═══════════════════════════════════════════════════════════════════════════════
+
+    Copy the CSS <head> above and build your report <body> using these components:
+
+    1. HEADER:
+         <div class="container">
+           <div class="header">
+             <div class="header-top">
+               <span class="team-badge">{{BADGE_ICON}} {{BADGE_LABEL}}</span>
+               <span class="report-date">Generated: {{REPORT_DATE}} | Last {{ANALYSIS_DAYS}} Days</span>
+             </div>
+             <h1>{{REPORT_ICON}} {{REPORT_TITLE}} <span>Report</span></h1>
+             <p class="subtitle">{{REPORT_SUBTITLE}}</p>
+           </div>
+
+    2. METRICS GRID (use 3-8 cards as needed):
+           <div class="metrics-grid">
+             <div class="metric-card">
+               <div class="metric-value info">42</div>
+               <div class="metric-label">Metric Name</div>
+             </div>
+             <!-- Add .success / .warning / .danger / .info class to metric-value -->
+           </div>
+
+    3. SECTION with TABLE:
+           <div class="section" id="kebab-case-id">
+             <div class="section-header">
+               <div class="section-icon">EMOJI</div>
+               <a href="#kebab-case-id" class="section-anchor">
+                 <h2>Section Title</h2>
+                 <span class="anchor-hash">#kebab-case-id</span>
+               </a>
+             </div>
+             <div class="explanation-box">
+               <h4>How to Read This Table</h4>
+               <ul><li>Explanation</li></ul>
+             </div>
+             <table>
+               <thead><tr><th>Column</th></tr></thead>
+               <tbody><tr><td>Data</td></tr></tbody>
+             </table>
+           </div>
+
+    4. EXECUTIVE SUMMARY:
+           <div class="section" id="executive-summary">
+             <div class="section-header">
+               <div class="section-icon">EMOJI</div>
+               <a href="#executive-summary" class="section-anchor">
+                 <h2>Executive Summary</h2>
+                 <span class="anchor-hash">#executive-summary</span>
+               </a>
+             </div>
+             <div class="executive-summary">
+               <h3>Key Findings</h3>
+               <p>Summary text...</p>
+             </div>
+           </div>
+
+    5. STATUS BADGES (in table cells):
+           <span class="status-badge status-healthy">GOOD</span>
+           <span class="status-badge status-warning">WARNING</span>
+           <span class="status-badge status-critical">CRITICAL</span>
+
+    6. PRIORITY TAGS (in table cells):
+           <span class="priority-tag priority-p0">P0</span>
+           <span class="priority-tag priority-p1">P1</span>
+           <span class="priority-tag priority-p2">P2</span>
+
+    7. FOOTER:
+           <div class="footer">
+             <p>{{REPORT_TITLE}} | {{BADGE_LABEL}} | Generated from DevLake metrics</p>
+             <p>Analysis period: Last {{ANALYSIS_DAYS}} days</p>
+           </div>
+         </div>
+
+    ═══════════════════════════════════════════════════════════════════════════════
+    -->
+</body>
+</html>

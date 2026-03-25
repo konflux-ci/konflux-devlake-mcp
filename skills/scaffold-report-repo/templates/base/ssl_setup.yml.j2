@@ -1,0 +1,70 @@
+# Custom CA Certificate Setup
+# Downloads and configures custom CA certificates for CI jobs
+# that need to access services using internal/corporate certificates.
+#
+# Override the CA cert URL at runtime via CUSTOM_CA_CERT_URL CI/CD variable.
+
+.ssl_setup:
+  before_script:
+    - |
+      echo "=== SSL Certificate Configuration ==="
+
+      # Allow runtime override via CI/CD variable
+      CA_CERT_URL="${CUSTOM_CA_CERT_URL:-{{ ca_cert_url }}}"
+
+      if [ -z "$CA_CERT_URL" ]; then
+        echo "No custom CA certificate URL configured, skipping"
+      else
+        # Ensure curl is installed
+        if ! command -v curl &> /dev/null; then
+          echo "Installing curl..."
+          dnf install -y curl 2>/dev/null || apt-get install -y curl 2>/dev/null || apk add curl 2>/dev/null
+        fi
+
+        # Download CA certificate bundle
+        CA_BUNDLE_PATH="/etc/pki/ca-trust/source/anchors/custom-ca.pem"
+        echo "Downloading CA certificates from $CA_CERT_URL..."
+        curl -fsSL "$CA_CERT_URL" -o "$CA_BUNDLE_PATH"
+
+        if [ ! -f "$CA_BUNDLE_PATH" ]; then
+          echo "ERROR: Failed to download CA certificates"
+          exit 1
+        fi
+
+        # Validate certificate file size and format
+        CERT_SIZE=$(stat -c%s "$CA_BUNDLE_PATH" 2>/dev/null || stat -f%z "$CA_BUNDLE_PATH")
+        if [ "$CERT_SIZE" -lt 100 ]; then
+          echo "ERROR: Certificate file seems too small ($CERT_SIZE bytes)"
+          exit 1
+        fi
+        echo "CA certificate downloaded ($CERT_SIZE bytes)"
+
+        # Validate PEM certificate syntax if openssl is available
+        if command -v openssl &> /dev/null; then
+          if ! openssl x509 -in "$CA_BUNDLE_PATH" -noout 2>/dev/null; then
+            echo "WARNING: Certificate may not be valid PEM format (openssl validation failed)"
+            echo "Continuing anyway — update-ca-trust will skip invalid certs"
+          else
+            echo "Certificate PEM validation passed"
+          fi
+        fi
+
+        # Update system certificate trust store
+        echo "Updating system certificate trust store..."
+        update-ca-trust extract 2>/dev/null || update-ca-certificates 2>/dev/null || true
+
+        SYSTEM_CA_BUNDLE="/etc/pki/tls/certs/ca-bundle.crt"
+        if [ ! -f "$SYSTEM_CA_BUNDLE" ]; then
+          SYSTEM_CA_BUNDLE="/etc/ssl/certs/ca-certificates.crt"
+        fi
+
+        # Configure environment variables for runtimes
+        export SSL_CERT_FILE="$SYSTEM_CA_BUNDLE"
+        export REQUESTS_CA_BUNDLE="$SYSTEM_CA_BUNDLE"
+        export PIP_CERT="$SYSTEM_CA_BUNDLE"
+        export CURL_CA_BUNDLE="$SYSTEM_CA_BUNDLE"
+        export NODE_EXTRA_CA_CERTS="$SYSTEM_CA_BUNDLE"
+
+        echo "SSL certificate configuration complete"
+      fi
+      echo "==="
