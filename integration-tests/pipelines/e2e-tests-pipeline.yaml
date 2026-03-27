@@ -175,10 +175,55 @@ spec:
               python -m pip install --upgrade pip
               pip install -r requirements.txt
 
-              echo "Running E2E tests..."
-              pytest tests/e2e -vv --maxfail=1 --tb=short
+              echo "Running E2E tests with coverage..."
+              set +e
+              pytest tests/e2e -vv --maxfail=1 --tb=short \
+                --cov=. \
+                --cov-report=xml:/workspace/source/coverage-e2e.xml \
+                --cov-report=term \
+                --cov-branch
+              TEST_EXIT_CODE=$?
+              set -e
 
-              echo "E2E tests completed successfully!"
+              echo "$TEST_EXIT_CODE" > /workspace/source/test-exit-code
+              echo "E2E tests finished with exit code $TEST_EXIT_CODE"
+
+          - name: upload-coverage
+            image: registry.access.redhat.com/ubi9/python-311:latest
+            workingDir: /workspace/source
+            env:
+              - name: CODECOV_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: konflux-devlake-mcp-coverport-secrets
+                    key: codecov-token
+              - name: GIT_REVISION
+                value: $(params.git-revision)
+            script: |
+              #!/usr/bin/env bash
+              set -e
+
+              if [ ! -f coverage-e2e.xml ]; then
+                echo "No coverage report found, skipping upload."
+              else
+                echo "Uploading e2e coverage to Codecov..."
+                pip install --quiet codecov-cli
+
+                codecovcli upload-process \
+                  --flag e2e-tests \
+                  --file coverage-e2e.xml \
+                  --token "$CODECOV_TOKEN" \
+                  --commit-sha "$GIT_REVISION" \
+                  --git-service github \
+                  --slug konflux-ci/konflux-devlake-mcp \
+                  --fail-on-error || echo "Coverage upload failed, continuing..."
+
+                echo "Coverage upload complete."
+              fi
+
+              # Propagate the original test exit code
+              TEST_EXIT_CODE=$(cat /workspace/source/test-exit-code 2>/dev/null || echo "1")
+              exit "$TEST_EXIT_CODE"
       params:
         - name: git-url
           value: $(tasks.test-metadata.results.git-url)
