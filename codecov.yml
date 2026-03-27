@@ -23,6 +23,10 @@ coverage:
 flags:
   unit-tests:
     carryforward: true
+  integration-tests:
+    carryforward: true
+  e2e-tests:
+    carryforward: true
 
 ignore:
   - "tests/"

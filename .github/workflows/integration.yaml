@@ -8,6 +8,7 @@ name: Integration Tests
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   integration-tests:
@@ -75,4 +76,21 @@ jobs:
           TEST_DB_USER: devlake
           TEST_DB_PASSWORD: devlake_password
           TEST_DB_NAME: lake
-        run: python run_tests.py --integration --verbose
+        run: |
+          python -m pytest tests/integration/ \
+            -m integration \
+            -vv --tb=short \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=term \
+            --cov-branch
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          file: ./coverage.xml
+          flags: integration-tests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+          verbose: true

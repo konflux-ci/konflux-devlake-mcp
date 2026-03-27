@@ -8,6 +8,7 @@ name: Unit Tests
 
 permissions:
   contents: read
+  id-token: write
   pull-requests: write
 
 jobs:
@@ -45,9 +46,9 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
+          use_oidc: true
           file: ./coverage.xml
           flags: unit-tests
           name: codecov-umbrella
           fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
