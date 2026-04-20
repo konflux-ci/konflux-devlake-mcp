@@ -1,3 +1,4 @@
+---
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
@@ -572,6 +573,26 @@ spec:
             operator: in
             values:
               - "false"
+    finally:
+      - name: store-pipeline-status
+        taskRef:
+          resolver: git
+          params:
+            - name: url
+              value: https://github.com/konflux-ci/tekton-integration-catalog.git
+            - name: revision
+              value: main
+            - name: pathInRepo
+              value: tasks/store-pipeline-status/0.1/store-pipeline-status.yaml
+        params:
+          - name: oci-ref
+            value: quay.io/konflux-test-storage/konflux-devprod/devlake-mcp-server:devlake-pipeline-status-$(context.pipelineRun.name)
+          - name: credentials-secret-name
+            value: konflux-test-infra
+          - name: pipeline-aggregate-status
+            value: $(tasks.status)
+          - name: pipelinerun-name
+            value: $(context.pipelineRun.name)
     workspaces:
       - name: git-auth
         optional: true
