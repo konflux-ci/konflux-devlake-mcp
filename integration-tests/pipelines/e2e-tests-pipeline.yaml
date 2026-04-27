@@ -59,6 +59,9 @@ spec:
           - name: MYSQL_ROOT_PASSWORD
             type: string
             default: "test_password"
+          - name: pipelinerun-name
+            type: string
+            description: Name of the PipelineRun for OCI artifact tagging
         sidecars:
           - name: mysql
             image: mysql:8.0
@@ -85,6 +88,10 @@ spec:
               periodSeconds: 5
               timeoutSeconds: 5
               failureThreshold: 20
+        volumes:
+          - name: oci-credentials
+            secret:
+              secretName: konflux-test-infra
         steps:
           - name: clone-repository
             image: registry.access.redhat.com/ubi9/ubi-minimal:latest
@@ -98,6 +105,8 @@ spec:
               cd /workspace/source
               git checkout $(params.git-revision)
               chmod -R 777 /workspace/source
+              mkdir -p /workspace/test-output
+              chmod 777 /workspace/test-output
               echo "Clone completed!"
 
           - name: wait-for-mysql
@@ -178,6 +187,7 @@ spec:
               echo "Running E2E tests with coverage..."
               set +e
               pytest tests/e2e -vv --maxfail=1 --tb=short \
+                --junitxml=/workspace/test-output/devlake-e2e-results.xml \
                 --cov=. \
                 --cov-report=xml:/workspace/source/coverage-e2e.xml \
                 --cov-report=term \
@@ -187,6 +197,24 @@ spec:
 
               echo "$TEST_EXIT_CODE" > /workspace/source/test-exit-code
               echo "E2E tests finished with exit code $TEST_EXIT_CODE"
+
+          - name: push-junit-results
+            ref:
+              resolver: git
+              params:
+                - name: url
+                  value: https://github.com/konflux-ci/tekton-integration-catalog.git
+                - name: revision
+                  value: main
+                - name: pathInRepo
+                  value: stepactions/secure-push-oci/0.1/secure-push-oci.yaml
+            params:
+              - name: workdir-path
+                value: /workspace/test-output
+              - name: oci-ref
+                value: quay.io/konflux-test-storage/konflux-devprod/devlake-mcp-server:devlake-e2e-results-$(params.pipelinerun-name)
+              - name: credentials-volume-name
+                value: oci-credentials
 
           - name: upload-coverage
             image: registry.access.redhat.com/ubi9/python-311:latest
@@ -229,3 +257,25 @@ spec:
           value: $(tasks.test-metadata.results.git-url)
         - name: git-revision
           value: $(tasks.test-metadata.results.git-revision)
+        - name: pipelinerun-name
+          value: $(context.pipelineRun.name)
+  finally:
+    - name: store-pipeline-status
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tasks/store-pipeline-status/0.1/store-pipeline-status.yaml
+      params:
+        - name: oci-ref
+          value: quay.io/konflux-test-storage/konflux-devprod/devlake-mcp-server:devlake-e2e-status-$(context.pipelineRun.name)
+        - name: credentials-secret-name
+          value: konflux-test-infra
+        - name: pipeline-aggregate-status
+          value: $(tasks.status)
+        - name: pipelinerun-name
+          value: $(context.pipelineRun.name)
