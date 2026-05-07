@@ -34,3 +34,13 @@ jobs:
 
       - name: Run yamllint
         run: yamllint .
+
+      - name: Validate AGENTS.md line count
+        run: |
+          MAX_LINES=60
+          ACTUAL=$(grep -c '' AGENTS.md)
+          echo "AGENTS.md: ${ACTUAL} lines (max ${MAX_LINES})"
+          if [ "$ACTUAL" -gt "$MAX_LINES" ]; then
+            echo "::error::AGENTS.md exceeds ${MAX_LINES} lines (has ${ACTUAL})"
+            exit 1
+          fi
