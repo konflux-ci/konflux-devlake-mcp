@@ -64,6 +64,28 @@ class LoggingConfig:
         self.format = format
 
 
+class LDAPConfig:
+    """IPA LDAP configuration for Rover group lookups (RBAC)."""
+
+    def __init__(
+        self,
+        server_url="ldap:///dc%3Dipa%2Cdc%3Dredhat%2Cdc%3Dcom",
+        base_dn="dc=ipa,dc=redhat,dc=com",
+        user_base_dn="cn=users,cn=accounts,dc=ipa,dc=redhat,dc=com",
+        bind_dn="",
+        bind_password="",
+        admin_group="devlakemcpadmin",
+        cache_ttl=300,
+    ):
+        self.server_url = server_url
+        self.base_dn = base_dn
+        self.user_base_dn = user_base_dn
+        self.bind_dn = bind_dn
+        self.bind_password = bind_password
+        self.admin_group = admin_group
+        self.cache_ttl = cache_ttl
+
+
 class OIDCConfig:
     """OIDC authentication configuration for Red Hat SSO / Keycloak"""
 
@@ -101,6 +123,7 @@ class KonfluxDevLakeConfig:
         self.server = ServerConfig()
         self.logging = LoggingConfig()
         self.oidc = OIDCConfig()
+        self.ldap = LDAPConfig()
         self._load_from_env()
 
     def _load_from_env(self):
@@ -171,6 +194,15 @@ class KonfluxDevLakeConfig:
         self.oidc.access_token_cache_buffer = int(
             os.getenv("OIDC_ACCESS_TOKEN_CACHE_BUFFER", str(self.oidc.access_token_cache_buffer))
         )
+
+        # IPA LDAP configuration for Rover group lookups (RBAC)
+        self.ldap.server_url = os.getenv("LDAP_SERVER_URL", self.ldap.server_url)
+        self.ldap.base_dn = os.getenv("LDAP_BASE_DN", self.ldap.base_dn)
+        self.ldap.user_base_dn = os.getenv("LDAP_USER_BASE_DN", self.ldap.user_base_dn)
+        self.ldap.bind_dn = os.getenv("LDAP_BIND_DN", self.ldap.bind_dn)
+        self.ldap.bind_password = os.getenv("LDAP_BIND_PASSWORD", self.ldap.bind_password)
+        self.ldap.admin_group = os.getenv("LDAP_ADMIN_GROUP", self.ldap.admin_group)
+        self.ldap.cache_ttl = int(os.getenv("LDAP_CACHE_TTL", str(self.ldap.cache_ttl)))
 
     def get_database_config(self) -> dict:
         """Get database configuration as dictionary"""
