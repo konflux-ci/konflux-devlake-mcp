@@ -52,3 +52,18 @@ data:
   OIDC_TOKEN_EXCHANGE_CLIENT_ID: ""
   # Seconds before access token expiry to refresh (default: 60)
   OIDC_ACCESS_TOKEN_CACHE_BUFFER: "60"
+
+  # IPA LDAP configuration for Rover group lookups (RBAC)
+  # The IPA system replaced legacy ldap.corp.redhat.com (decommissioned 2026/2027).
+  # Anonymous binding is not supported; a service account is required.
+  # Credentials (LDAP_BIND_DN, LDAP_BIND_PASSWORD) must be stored in a Secret.
+  # IPA LDAP endpoint - DNS-based, resolves to the nearest IPA server automatically.
+  LDAP_SERVER_URL: "ldap:///dc%3Dipa%2Cdc%3Dredhat%2Cdc%3Dcom"
+  # IPA base DN (was dc=redhat,dc=com on legacy LDAP)
+  LDAP_BASE_DN: "dc=ipa,dc=redhat,dc=com"
+  # Specific user subtree (best practice: most specific base DN for performance)
+  LDAP_USER_BASE_DN: "cn=users,cn=accounts,dc=ipa,dc=redhat,dc=com"
+  # Rover group whose members receive the mcp-admin role
+  LDAP_ADMIN_GROUP: "devlakemcpadmin"
+  # Group membership cache TTL in seconds (default: 300)
+  LDAP_CACHE_TTL: "300"

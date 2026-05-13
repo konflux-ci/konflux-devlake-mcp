@@ -3,21 +3,25 @@
 LDAP Service for Rover Group Lookups
 
 Checks if users are members of the devlakemcpadmin Rover group
-by querying ldap.corp.redhat.com.
+by querying the Red Hat IPA LDAP service.
 """
 
+import os
 import time
 from typing import Dict, Optional, Set
 
-from ldap3 import Connection, Server, SUBTREE, ALL
+from ldap3 import ALL, SIMPLE, SUBTREE, Connection, Server
 from ldap3.core.exceptions import LDAPException
 
 from utils.logger import get_logger
 
-LDAP_SERVER = "ldaps://ldap.corp.redhat.com"
-LDAP_BASE_DN = "dc=redhat,dc=com"
-LDAP_CACHE_TTL = 300
-LDAP_ADMIN_GROUP = "devlakemcpadmin"
+LDAP_SERVER = os.getenv("LDAP_SERVER_URL", "ldap:///dc%3Dipa%2Cdc%3Dredhat%2Cdc%3Dcom")
+LDAP_BASE_DN = os.getenv("LDAP_BASE_DN", "dc=ipa,dc=redhat,dc=com")
+LDAP_USER_BASE_DN = os.getenv("LDAP_USER_BASE_DN", "cn=users,cn=accounts,dc=ipa,dc=redhat,dc=com")
+LDAP_CACHE_TTL = int(os.getenv("LDAP_CACHE_TTL", "300"))
+LDAP_ADMIN_GROUP = os.getenv("LDAP_ADMIN_GROUP", "devlakemcpadmin")
+LDAP_BIND_DN = os.getenv("LDAP_BIND_DN", "")
+LDAP_BIND_PASSWORD = os.getenv("LDAP_BIND_PASSWORD", "")
 
 
 class LDAPGroupCache:
@@ -49,16 +53,28 @@ class LDAPGroupCache:
 
 
 class LDAPService:
-    """Service for querying LDAP for Rover group membership."""
+    """Service for querying IPA LDAP for Rover group membership."""
 
     def __init__(self):
         self.logger = get_logger(f"{__name__}.LDAPService")
         self.server_url = LDAP_SERVER
         self.base_dn = LDAP_BASE_DN
+        self.user_base_dn = LDAP_USER_BASE_DN
         self.admin_group = LDAP_ADMIN_GROUP
+        self.bind_dn = LDAP_BIND_DN
+        self.bind_password = LDAP_BIND_PASSWORD
         self._cache = LDAPGroupCache(LDAP_CACHE_TTL)
+
+        if not self.bind_dn or not self.bind_password:
+            self.logger.warning(
+                "LDAP_BIND_DN or LDAP_BIND_PASSWORD is not set. "
+                "IPA LDAP requires a service account; group lookups will fail until "
+                "credentials are configured."
+            )
+
         self.logger.info(
             f"LDAP service initialized: server={self.server_url}, "
+            f"user_base_dn={self.user_base_dn}, "
             f"admin_group={self.admin_group}, cache_ttl={LDAP_CACHE_TTL}s"
         )
 
@@ -75,18 +91,30 @@ class LDAPService:
         return groups
 
     def _query_ldap_groups(self, username: str) -> Set[str]:
-        """Query LDAP for a user's group memberships."""
+        """Query IPA LDAP for a user's group memberships using a service account bind."""
         groups = set()
 
-        try:
-            # Create LDAP connection (anonymous bind for read-only queries)
-            server = Server(self.server_url, get_info=ALL)
-            conn = Connection(server, auto_bind=True)
+        if not self.bind_dn or not self.bind_password:
+            self.logger.error(
+                f"Cannot query LDAP for '{username}': service account credentials not configured "
+                "(set LDAP_BIND_DN and LDAP_BIND_PASSWORD)"
+            )
+            return groups
 
-            # Search for the user
+        try:
+            server = Server(self.server_url, get_info=ALL)
+            conn = Connection(
+                server,
+                user=self.bind_dn,
+                password=self.bind_password,
+                authentication=SIMPLE,
+                auto_bind=True,
+            )
+
+            # Search in the specific user subtree.
             search_filter = f"(uid={username})"
             conn.search(
-                search_base=self.base_dn,
+                search_base=self.user_base_dn,
                 search_filter=search_filter,
                 search_scope=SUBTREE,
                 attributes=["memberOf"],
@@ -94,13 +122,9 @@ class LDAPService:
 
             if conn.entries:
                 entry = conn.entries[0]
-                # Extract group names from memberOf DNs
-                # Format: cn=groupname,ou=adhoc,ou=managedGroups,dc=redhat,dc=com
                 for member_of in entry.memberOf.values if hasattr(entry, "memberOf") else []:
-                    # Extract CN (group name) from the DN
                     if member_of.startswith("cn="):
-                        group_name = member_of.split(",")[0][3:]  # Remove "cn=" prefix
-                        groups.add(group_name)
+                        groups.add(member_of.split(",")[0][3:])
 
             conn.unbind()
 
@@ -124,7 +148,9 @@ class LDAPService:
         """Get cache statistics for monitoring."""
         return {
             "server": self.server_url,
+            "user_base_dn": self.user_base_dn,
             "admin_group": self.admin_group,
+            "bind_dn_configured": bool(self.bind_dn),
             "cache_size": self._cache.size(),
             "cache_ttl": self._cache._ttl,
         }

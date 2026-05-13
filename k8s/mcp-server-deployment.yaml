@@ -150,6 +150,49 @@ spec:
               value: "3600"
             - name: SERVER_TIMEOUT_GRACEFUL_SHUTDOWN
               value: "300"
+            # IPA LDAP service account credentials (required - anonymous binding not supported)
+            # Request a service account at https://redhat.service-now.com (IT-IAM)
+            - name: LDAP_BIND_DN
+              valueFrom:
+                secretKeyRef:
+                  name: konflux-mcp-ldap-secret
+                  key: LDAP_BIND_DN
+            - name: LDAP_BIND_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: konflux-mcp-ldap-secret
+                  key: LDAP_BIND_PASSWORD
+            # IPA LDAP non-sensitive settings
+            - name: LDAP_SERVER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: LDAP_SERVER_URL
+                  optional: true
+            - name: LDAP_BASE_DN
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: LDAP_BASE_DN
+                  optional: true
+            - name: LDAP_USER_BASE_DN
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: LDAP_USER_BASE_DN
+                  optional: true
+            - name: LDAP_ADMIN_GROUP
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: LDAP_ADMIN_GROUP
+                  optional: true
+            - name: LDAP_CACHE_TTL
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: LDAP_CACHE_TTL
+                  optional: true
           resources:
             requests:
               cpu: "2"
