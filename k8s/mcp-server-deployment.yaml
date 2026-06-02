@@ -154,12 +154,12 @@ spec:
             - name: LDAP_BIND_DN
               valueFrom:
                 secretKeyRef:
-                  name: konflux-mcp-ldap-secret
+                  name: konflux-devlake-secrets
                   key: LDAP_BIND_DN
             - name: LDAP_BIND_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: konflux-mcp-ldap-secret
+                  name: konflux-devlake-secrets
                   key: LDAP_BIND_PASSWORD
           resources:
             requests:
