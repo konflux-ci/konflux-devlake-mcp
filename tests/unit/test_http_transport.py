@@ -376,9 +376,7 @@ class TestHttpTransportMCPApp:
         from anyio import ClosedResourceError
 
         transport = self._make_transport_with_session_manager()
-        transport._session_manager.handle_request = AsyncMock(
-            side_effect=ClosedResourceError()
-        )
+        transport._session_manager.handle_request = AsyncMock(side_effect=ClosedResourceError())
 
         health_app = AsyncMock()
         mcp_app = transport._create_mcp_app(health_app)
@@ -477,9 +475,7 @@ class TestHttpTransportWrappedSessionManager:
 
             result = transport._create_wrapped_session_manager(mock_server)
 
-            mock_sm_cls.assert_called_once_with(
-                app=mock_server, json_response=True, stateless=True
-            )
+            mock_sm_cls.assert_called_once_with(app=mock_server, json_response=True, stateless=True)
             assert result is mock_sm_instance
 
     @pytest.mark.asyncio
@@ -494,9 +490,7 @@ class TestHttpTransportWrappedSessionManager:
             "mcp.server.streamable_http_manager.StreamableHTTPSessionManager"
         ) as mock_sm_cls:
             mock_sm_instance = Mock()
-            mock_sm_instance.handle_request = AsyncMock(
-                side_effect=ClosedResourceError()
-            )
+            mock_sm_instance.handle_request = AsyncMock(side_effect=ClosedResourceError())
             mock_sm_cls.return_value = mock_sm_instance
 
             result = transport._create_wrapped_session_manager(mock_server)
@@ -513,9 +507,7 @@ class TestHttpTransportWrappedSessionManager:
             "mcp.server.streamable_http_manager.StreamableHTTPSessionManager"
         ) as mock_sm_cls:
             mock_sm_instance = Mock()
-            mock_sm_instance.handle_request = AsyncMock(
-                side_effect=BrokenPipeError("broken pipe")
-            )
+            mock_sm_instance.handle_request = AsyncMock(side_effect=BrokenPipeError("broken pipe"))
             mock_sm_cls.return_value = mock_sm_instance
 
             result = transport._create_wrapped_session_manager(mock_server)

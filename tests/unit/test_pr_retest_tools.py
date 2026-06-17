@@ -43,9 +43,7 @@ class TestPRRetestTools:
             {"success": True, "data": [{"date": "2024-01-01", "retest_count": "3"}]},
             {
                 "success": True,
-                "data": [
-                    {"category": "Bug Fixes", "pr_count": "5", "total_retests": "15"}
-                ],
+                "data": [{"category": "Bug Fixes", "pr_count": "5", "total_retests": "15"}],
             },
             {
                 "success": True,
@@ -100,9 +98,7 @@ class TestPRRetestTools:
 
     @pytest.mark.asyncio
     async def test_call_tool_exception(self, retest_tools):
-        with patch.object(
-            retest_tools, "_analyze_pr_retests_tool", side_effect=Exception("boom")
-        ):
+        with patch.object(retest_tools, "_analyze_pr_retests_tool", side_effect=Exception("boom")):
             result_toon = await retest_tools.call_tool("analyze_pr_retests", {})
             result = toon_decode(result_toon)
         assert result["success"] is False
@@ -124,9 +120,7 @@ class TestPRRetestTools:
         assert pr["changes"]["total"] == 15
 
     @pytest.mark.asyncio
-    async def test_analyze_pr_retests_with_project(
-        self, retest_tools, mock_db_connection
-    ):
+    async def test_analyze_pr_retests_with_project(self, retest_tools, mock_db_connection):
         side_effect = [
             {"success": True, "data": [{"name": "test-repo"}]}
         ] + self._make_default_side_effect()
@@ -140,9 +134,7 @@ class TestPRRetestTools:
         assert result["filters"]["resolved_repos"] == ["test-repo"]
 
     @pytest.mark.asyncio
-    async def test_analyze_pr_retests_with_repo_name(
-        self, retest_tools, mock_db_connection
-    ):
+    async def test_analyze_pr_retests_with_repo_name(self, retest_tools, mock_db_connection):
         mock_db_connection.execute_query.side_effect = self._make_default_side_effect()
         result_toon = await retest_tools.call_tool(
             "analyze_pr_retests", {"repo_name": "integration-service"}
@@ -152,9 +144,7 @@ class TestPRRetestTools:
         assert result["filters"]["repo_name"] == "integration-service"
 
     @pytest.mark.asyncio
-    async def test_analyze_pr_retests_with_dates(
-        self, retest_tools, mock_db_connection
-    ):
+    async def test_analyze_pr_retests_with_dates(self, retest_tools, mock_db_connection):
         mock_db_connection.execute_query.side_effect = self._make_default_side_effect()
         result_toon = await retest_tools.call_tool(
             "analyze_pr_retests", {"start_date": "2024-01-01", "end_date": "2024-03-31"}
@@ -165,43 +155,31 @@ class TestPRRetestTools:
         assert "2024-03-31" in result["analysis_period"]["end_date"]
 
     @pytest.mark.asyncio
-    async def test_analyze_pr_retests_with_days_back(
-        self, retest_tools, mock_db_connection
-    ):
+    async def test_analyze_pr_retests_with_days_back(self, retest_tools, mock_db_connection):
         mock_db_connection.execute_query.side_effect = self._make_default_side_effect()
-        result_toon = await retest_tools.call_tool(
-            "analyze_pr_retests", {"days_back": 60}
-        )
+        result_toon = await retest_tools.call_tool("analyze_pr_retests", {"days_back": 60})
         result = toon_decode(result_toon)
         assert result["success"] is True
         assert result["analysis_period"]["days_back"] == 60
 
     @pytest.mark.asyncio
-    async def test_analyze_pr_retests_exclude_bots_false(
-        self, retest_tools, mock_db_connection
-    ):
+    async def test_analyze_pr_retests_exclude_bots_false(self, retest_tools, mock_db_connection):
         mock_db_connection.execute_query.side_effect = self._make_default_side_effect()
-        result_toon = await retest_tools.call_tool(
-            "analyze_pr_retests", {"exclude_bots": False}
-        )
+        result_toon = await retest_tools.call_tool("analyze_pr_retests", {"exclude_bots": False})
         result = toon_decode(result_toon)
         assert result["success"] is True
         assert result["filters"]["exclude_bots"] is False
 
     @pytest.mark.asyncio
     async def test_analyze_pr_retests_db_error(self, retest_tools, mock_db_connection):
-        mock_db_connection.execute_query = AsyncMock(
-            side_effect=Exception("DB connection failed")
-        )
+        mock_db_connection.execute_query = AsyncMock(side_effect=Exception("DB connection failed"))
         result_toon = await retest_tools.call_tool("analyze_pr_retests", {})
         result = toon_decode(result_toon)
         assert result["success"] is False
         assert "DB connection failed" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_analyze_pr_retests_empty_results(
-        self, retest_tools, mock_db_connection
-    ):
+    async def test_analyze_pr_retests_empty_results(self, retest_tools, mock_db_connection):
         mock_db_connection.execute_query.side_effect = [
             {"success": True, "data": [{"total_retests": "0", "affected_prs": "0"}]},
             {"success": True, "data": []},

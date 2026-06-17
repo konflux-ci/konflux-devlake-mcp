@@ -176,9 +176,7 @@ class TestE2ETestTools:
 
     @pytest.mark.asyncio
     async def test_call_tool_exception(self, e2e_tools):
-        with patch.object(
-            e2e_tools, "_analyze_e2e_tests", side_effect=Exception("boom")
-        ):
+        with patch.object(e2e_tools, "_analyze_e2e_tests", side_effect=Exception("boom")):
             result_toon = await e2e_tools.call_tool("analyze_e2e_tests", {})
             result = toon_decode(result_toon)
         assert result["success"] is False
@@ -203,9 +201,7 @@ class TestE2ETestTools:
 
     @pytest.mark.asyncio
     async def test_analyze_e2e_tests_no_repos(self, e2e_tools, mock_db_connection):
-        mock_db_connection.execute_query = AsyncMock(
-            side_effect=[{"success": True, "data": []}]
-        )
+        mock_db_connection.execute_query = AsyncMock(side_effect=[{"success": True, "data": []}])
         result_toon = await e2e_tools.call_tool(
             "analyze_e2e_tests", {"project_name": "TestProject"}
         )
@@ -215,9 +211,7 @@ class TestE2ETestTools:
 
     @pytest.mark.asyncio
     async def test_analyze_e2e_tests_success(self, e2e_tools, mock_db_connection):
-        mock_db_connection.execute_query = AsyncMock(
-            side_effect=self._make_success_side_effect()
-        )
+        mock_db_connection.execute_query = AsyncMock(side_effect=self._make_success_side_effect())
         result_toon = await e2e_tools.call_tool(
             "analyze_e2e_tests", {"project_name": "TestProject"}
         )
@@ -230,12 +224,8 @@ class TestE2ETestTools:
         assert result["job_breakdown"][0]["health_status"] == "warning"
 
     @pytest.mark.asyncio
-    async def test_analyze_e2e_tests_with_repo_filter(
-        self, e2e_tools, mock_db_connection
-    ):
-        mock_db_connection.execute_query = AsyncMock(
-            side_effect=self._make_success_side_effect()
-        )
+    async def test_analyze_e2e_tests_with_repo_filter(self, e2e_tools, mock_db_connection):
+        mock_db_connection.execute_query = AsyncMock(side_effect=self._make_success_side_effect())
         result_toon = await e2e_tools.call_tool(
             "analyze_e2e_tests",
             {"project_name": "TestProject", "repo_name": "integration"},
@@ -245,12 +235,8 @@ class TestE2ETestTools:
         assert result["repo_filter"] == "integration"
 
     @pytest.mark.asyncio
-    async def test_analyze_e2e_tests_include_all_tests(
-        self, e2e_tools, mock_db_connection
-    ):
-        mock_db_connection.execute_query = AsyncMock(
-            side_effect=self._make_success_side_effect()
-        )
+    async def test_analyze_e2e_tests_include_all_tests(self, e2e_tools, mock_db_connection):
+        mock_db_connection.execute_query = AsyncMock(side_effect=self._make_success_side_effect())
         result_toon = await e2e_tools.call_tool(
             "analyze_e2e_tests",
             {"project_name": "TestProject", "include_all_tests": True},
@@ -260,9 +246,7 @@ class TestE2ETestTools:
         assert result["test_filter"] == "all_tests"
 
     @pytest.mark.asyncio
-    async def test_analyze_e2e_tests_repo_name_only(
-        self, e2e_tools, mock_db_connection
-    ):
+    async def test_analyze_e2e_tests_repo_name_only(self, e2e_tools, mock_db_connection):
         mock_db_connection.execute_query = AsyncMock(
             side_effect=self._make_success_side_effect()[1:]
         )
@@ -298,17 +282,13 @@ class TestE2ETestTools:
 
     @pytest.mark.asyncio
     async def test_get_repos_for_project_empty(self, e2e_tools, mock_db_connection):
-        mock_db_connection.execute_query = AsyncMock(
-            return_value={"success": True, "data": []}
-        )
+        mock_db_connection.execute_query = AsyncMock(return_value={"success": True, "data": []})
         repos = await e2e_tools._get_repos_for_project("TestProject")
         assert repos == []
 
     @pytest.mark.asyncio
     async def test_execute_with_timeout(self, e2e_tools, mock_db_connection):
-        mock_db_connection.execute_query = AsyncMock(
-            return_value={"success": True, "data": []}
-        )
+        mock_db_connection.execute_query = AsyncMock(return_value={"success": True, "data": []})
         result = await e2e_tools._execute_with_timeout("SELECT 1", 1)
         assert result == {"success": True, "data": []}
 

@@ -267,9 +267,7 @@ class TestMCPServerShutdown:
     ):
         """Test shutdown handles asyncio.CancelledError gracefully."""
         mock_config.oidc.enabled = False
-        mock_security_manager.cleanup_expired_tokens = Mock(
-            side_effect=asyncio.CancelledError()
-        )
+        mock_security_manager.cleanup_expired_tokens = Mock(side_effect=asyncio.CancelledError())
 
         server = KonfluxDevLakeMCPServer(
             config=mock_config,

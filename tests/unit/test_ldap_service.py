@@ -83,9 +83,7 @@ class TestLDAPService:
 
     @patch("utils.ldap_service.Connection")
     @patch("utils.ldap_service.Server")
-    def test_query_ldap_groups_ldap_exception(
-        self, mock_server_cls, mock_conn_cls, service
-    ):
+    def test_query_ldap_groups_ldap_exception(self, mock_server_cls, mock_conn_cls, service):
         from ldap3.core.exceptions import LDAPException
 
         mock_conn_cls.side_effect = LDAPException("connection failed")
@@ -94,9 +92,7 @@ class TestLDAPService:
 
     @patch("utils.ldap_service.Connection")
     @patch("utils.ldap_service.Server")
-    def test_query_ldap_groups_unexpected_exception(
-        self, mock_server_cls, mock_conn_cls, service
-    ):
+    def test_query_ldap_groups_unexpected_exception(self, mock_server_cls, mock_conn_cls, service):
         mock_conn_cls.side_effect = RuntimeError("unexpected")
         result = service._query_ldap_groups("alice")
         assert result == set()

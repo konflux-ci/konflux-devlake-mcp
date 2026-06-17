@@ -127,9 +127,7 @@ class TestPRStatsTools:
         assert stats_tools._categorize_pr("fix(deps): upgrade bar") == "dependency_bot"
         assert stats_tools._categorize_pr("Update Docker image") == "dependency_bot"
         assert stats_tools._categorize_pr("Bump version to 1.0") == "dependency_bot"
-        assert (
-            stats_tools._categorize_pr("dependabot: update lodash") == "dependency_bot"
-        )
+        assert stats_tools._categorize_pr("dependabot: update lodash") == "dependency_bot"
         assert stats_tools._categorize_pr("renovate: pin deps") == "dependency_bot"
         assert stats_tools._categorize_pr("update digest to abc") == "dependency_bot"
         assert stats_tools._categorize_pr("dependencies cleanup") == "dependency_bot"
@@ -154,9 +152,7 @@ class TestPRStatsTools:
     @pytest.mark.asyncio
     async def test_get_pr_stats_no_repos(self, stats_tools, mock_db_connection):
         mock_db_connection.execute_query.side_effect = [{"success": True, "data": []}]
-        result_toon = await stats_tools.call_tool(
-            "get_pr_stats", {"project_name": "Test"}
-        )
+        result_toon = await stats_tools.call_tool("get_pr_stats", {"project_name": "Test"})
         result = toon_decode(result_toon)
         assert result["success"] is True
         assert result["summary"]["total_prs"] == 0
@@ -165,9 +161,7 @@ class TestPRStatsTools:
     @pytest.mark.asyncio
     async def test_get_pr_stats_success(self, stats_tools, mock_db_connection):
         mock_db_connection.execute_query.side_effect = self._make_success_side_effect()
-        result_toon = await stats_tools.call_tool(
-            "get_pr_stats", {"project_name": "Test"}
-        )
+        result_toon = await stats_tools.call_tool("get_pr_stats", {"project_name": "Test"})
         result = toon_decode(result_toon)
         assert result["success"] is True
         assert result["summary"]["total_prs"] == 20
@@ -190,9 +184,7 @@ class TestPRStatsTools:
     @pytest.mark.asyncio
     async def test_get_pr_stats_db_error(self, stats_tools, mock_db_connection):
         mock_db_connection.execute_query = AsyncMock(side_effect=Exception("DB error"))
-        result_toon = await stats_tools.call_tool(
-            "get_pr_stats", {"project_name": "Test"}
-        )
+        result_toon = await stats_tools.call_tool("get_pr_stats", {"project_name": "Test"})
         result = toon_decode(result_toon)
         assert result["success"] is False
         assert "DB error" in result["error"]
@@ -228,18 +220,14 @@ class TestPRStatsTools:
                 ],
             },
         ]
-        result_toon = await stats_tools.call_tool(
-            "get_pr_stats", {"project_name": "Test"}
-        )
+        result_toon = await stats_tools.call_tool("get_pr_stats", {"project_name": "Test"})
         result = toon_decode(result_toon)
         assert result["success"] is True
         assert result["summary"]["total_prs"] == 10
 
     @pytest.mark.asyncio
     async def test_execute_with_timeout(self, stats_tools, mock_db_connection):
-        mock_db_connection.execute_query = AsyncMock(
-            return_value={"success": True, "data": []}
-        )
+        mock_db_connection.execute_query = AsyncMock(return_value={"success": True, "data": []})
         result = await stats_tools._execute_with_timeout("SELECT 1", 1)
         assert result == {"success": True, "data": []}
 

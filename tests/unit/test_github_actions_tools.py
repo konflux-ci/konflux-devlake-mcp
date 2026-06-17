@@ -141,9 +141,7 @@ class TestGitHubActionsTools:
         assert "project_name is required" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_get_github_actions_health_no_repos(
-        self, actions_tools, mock_db_connection
-    ):
+    async def test_get_github_actions_health_no_repos(self, actions_tools, mock_db_connection):
         mock_db_connection.execute_query.side_effect = [{"success": True, "data": []}]
         result_toon = await actions_tools.call_tool(
             "get_github_actions_health", {"project_name": "Test"}
@@ -154,9 +152,7 @@ class TestGitHubActionsTools:
         assert result["repo_breakdown"] == []
 
     @pytest.mark.asyncio
-    async def test_get_github_actions_health_success(
-        self, actions_tools, mock_db_connection
-    ):
+    async def test_get_github_actions_health_success(self, actions_tools, mock_db_connection):
         mock_db_connection.execute_query.side_effect = self._make_success_side_effect()
         result_toon = await actions_tools.call_tool(
             "get_github_actions_health", {"project_name": "Test"}
@@ -181,12 +177,8 @@ class TestGitHubActionsTools:
         assert result["analysis_period"]["days_back"] == 60
 
     @pytest.mark.asyncio
-    async def test_get_github_actions_health_db_error(
-        self, actions_tools, mock_db_connection
-    ):
-        mock_db_connection.execute_query = AsyncMock(
-            side_effect=Exception("DB connection failed")
-        )
+    async def test_get_github_actions_health_db_error(self, actions_tools, mock_db_connection):
+        mock_db_connection.execute_query = AsyncMock(side_effect=Exception("DB connection failed"))
         result_toon = await actions_tools.call_tool(
             "get_github_actions_health", {"project_name": "Test"}
         )
@@ -228,9 +220,7 @@ class TestGitHubActionsTools:
 
     @pytest.mark.asyncio
     async def test_execute_with_timeout(self, actions_tools, mock_db_connection):
-        mock_db_connection.execute_query = AsyncMock(
-            return_value={"success": True, "data": []}
-        )
+        mock_db_connection.execute_query = AsyncMock(return_value={"success": True, "data": []})
         result = await actions_tools._execute_with_timeout("SELECT 1", 1)
         assert result == {"success": True, "data": []}
 

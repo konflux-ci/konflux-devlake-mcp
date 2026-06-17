@@ -98,9 +98,7 @@ class TestValidateConfig:
         )
 
         config = KonfluxDevLakeConfig()
-        config.database = DatabaseConfig(
-            host="h", port=3306, user="u", password="p", database="d"
-        )
+        config.database = DatabaseConfig(host="h", port=3306, user="u", password="p", database="d")
         config.server = ServerConfig(transport="stdio", host="localhost", port=3000)
         config.logging = LoggingConfig(level="INFO")
         assert validate_config(config) is True
@@ -114,9 +112,7 @@ class TestValidateConfig:
         )
 
         config = KonfluxDevLakeConfig()
-        config.database = DatabaseConfig(
-            host="", port=3306, user="u", password="p", database="d"
-        )
+        config.database = DatabaseConfig(host="", port=3306, user="u", password="p", database="d")
         config.server = ServerConfig(transport="stdio", host="localhost", port=3000)
         config.logging = LoggingConfig(level="INFO")
         assert validate_config(config) is False
@@ -130,9 +126,7 @@ class TestValidateConfig:
         )
 
         config = KonfluxDevLakeConfig()
-        config.database = DatabaseConfig(
-            host="h", port=3306, user="", password="p", database="d"
-        )
+        config.database = DatabaseConfig(host="h", port=3306, user="", password="p", database="d")
         config.server = ServerConfig(transport="stdio", host="localhost", port=3000)
         config.logging = LoggingConfig(level="INFO")
         assert validate_config(config) is False
@@ -150,9 +144,7 @@ class TestRunServer:
         )
 
         config = KonfluxDevLakeConfig()
-        config.database = DatabaseConfig(
-            host="h", port=3306, user="u", password="p", database="d"
-        )
+        config.database = DatabaseConfig(host="h", port=3306, user="u", password="p", database="d")
         config.server = ServerConfig(transport="stdio", host="localhost", port=3000)
         config.logging = LoggingConfig(level="INFO")
 
@@ -180,9 +172,7 @@ class TestRunServer:
         )
 
         config = KonfluxDevLakeConfig()
-        config.database = DatabaseConfig(
-            host="h", port=3306, user="u", password="p", database="d"
-        )
+        config.database = DatabaseConfig(host="h", port=3306, user="u", password="p", database="d")
         config.server = ServerConfig(transport="stdio", host="localhost", port=3000)
         config.logging = LoggingConfig(level="INFO")
 
@@ -209,9 +199,7 @@ class TestRunServer:
         )
 
         config = KonfluxDevLakeConfig()
-        config.database = DatabaseConfig(
-            host="h", port=3306, user="u", password="p", database="d"
-        )
+        config.database = DatabaseConfig(host="h", port=3306, user="u", password="p", database="d")
         config.server = ServerConfig(transport="stdio", host="localhost", port=3000)
         config.logging = LoggingConfig(level="INFO")
 

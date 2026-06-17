@@ -61,9 +61,7 @@ class TestDatabaseTools:
         assert database_tools.validate_tool_exists("nonexistent_tool") is False
 
     @pytest.mark.asyncio
-    async def test_connect_database_tool_success(
-        self, database_tools, mock_db_connection
-    ):
+    async def test_connect_database_tool_success(self, database_tools, mock_db_connection):
         """Test successful database connection."""
         result_toon = await database_tools.call_tool("connect_database", {})
         result = toon_decode(result_toon)
@@ -76,9 +74,7 @@ class TestDatabaseTools:
         mock_db_connection.connect.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_connect_database_tool_failure(
-        self, database_tools, mock_db_connection
-    ):
+    async def test_connect_database_tool_failure(self, database_tools, mock_db_connection):
         """Test database connection failure."""
         mock_db_connection.connect.return_value = {
             "success": False,
@@ -129,17 +125,13 @@ class TestDatabaseTools:
             ],
         }
 
-        result_toon = await database_tools.call_tool(
-            "list_tables", {"database": "lake"}
-        )
+        result_toon = await database_tools.call_tool("list_tables", {"database": "lake"})
         result = toon_decode(result_toon)
 
         assert result["success"] is True
         assert result["row_count"] == 4
 
-        mock_db_connection.execute_query.assert_called_once_with(
-            "SHOW TABLES FROM `lake`"
-        )
+        mock_db_connection.execute_query.assert_called_once_with("SHOW TABLES FROM `lake`")
 
     @pytest.mark.asyncio
     async def test_list_tables_tool_missing_database(self, database_tools):
@@ -176,9 +168,7 @@ class TestDatabaseTools:
         assert "incident_key" in field_names
         assert "title" in field_names
 
-        mock_db_connection.execute_query.assert_called_once_with(
-            "DESCRIBE `lake`.`incidents`"
-        )
+        mock_db_connection.execute_query.assert_called_once_with("DESCRIBE `lake`.`incidents`")
 
     @pytest.mark.asyncio
     async def test_get_table_schema_tool_missing_parameters(self, database_tools):
@@ -189,9 +179,7 @@ class TestDatabaseTools:
         assert result["success"] is False
         assert "Database and table names are required" in result["error"]
 
-        result_toon = await database_tools.call_tool(
-            "get_table_schema", {"database": "lake"}
-        )
+        result_toon = await database_tools.call_tool("get_table_schema", {"database": "lake"})
         result = toon_decode(result_toon)
 
         assert result["success"] is False
@@ -207,9 +195,7 @@ class TestDatabaseTools:
         assert "Unknown database tool: unknown_tool" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_tool_call_exception_handling(
-        self, database_tools, mock_db_connection
-    ):
+    async def test_tool_call_exception_handling(self, database_tools, mock_db_connection):
         """Test exception handling in tool calls."""
         mock_db_connection.execute_query.side_effect = Exception("Database error")
 
@@ -274,9 +260,7 @@ class TestDatabaseTools:
     async def test_list_tables_exception(self, database_tools, mock_db_connection):
         """Test list_tables error handling."""
         mock_db_connection.execute_query.side_effect = Exception("Access denied")
-        result_toon = await database_tools.call_tool(
-            "list_tables", {"database": "secret_db"}
-        )
+        result_toon = await database_tools.call_tool("list_tables", {"database": "secret_db"})
         result = toon_decode(result_toon)
         assert result["success"] is False
         assert "Access denied" in result["error"]

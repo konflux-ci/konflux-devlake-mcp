@@ -121,12 +121,8 @@ class TestPRCycleTimeTools:
 
     @pytest.mark.asyncio
     async def test_get_pr_cycle_time_with_defaults(self, tools, mock_db_connection):
-        mock_db_connection.execute_query.side_effect = (
-            self._make_five_query_side_effect()
-        )
-        result_toon = await tools.call_tool(
-            "get_pr_cycle_time", {"project_name": "Test Project"}
-        )
+        mock_db_connection.execute_query.side_effect = self._make_five_query_side_effect()
+        result_toon = await tools.call_tool("get_pr_cycle_time", {"project_name": "Test Project"})
         result = toon_decode(result_toon)
         assert result["success"] is True
         assert result["project_name"] == "Test Project"
@@ -142,9 +138,7 @@ class TestPRCycleTimeTools:
 
     @pytest.mark.asyncio
     async def test_get_pr_cycle_time_with_dates(self, tools, mock_db_connection):
-        mock_db_connection.execute_query.side_effect = (
-            self._make_five_query_side_effect()
-        )
+        mock_db_connection.execute_query.side_effect = self._make_five_query_side_effect()
         result_toon = await tools.call_tool(
             "get_pr_cycle_time",
             {
@@ -158,9 +152,7 @@ class TestPRCycleTimeTools:
 
     @pytest.mark.asyncio
     async def test_get_pr_cycle_time_with_days_back(self, tools, mock_db_connection):
-        mock_db_connection.execute_query.side_effect = (
-            self._make_five_query_side_effect()
-        )
+        mock_db_connection.execute_query.side_effect = self._make_five_query_side_effect()
         result_toon = await tools.call_tool(
             "get_pr_cycle_time", {"project_name": "Test Project", "days_back": 60}
         )
@@ -169,9 +161,7 @@ class TestPRCycleTimeTools:
 
     @pytest.mark.asyncio
     async def test_get_pr_cycle_time_with_repo_filter(self, tools, mock_db_connection):
-        mock_db_connection.execute_query.side_effect = (
-            self._make_five_query_side_effect()
-        )
+        mock_db_connection.execute_query.side_effect = self._make_five_query_side_effect()
         result_toon = await tools.call_tool(
             "get_pr_cycle_time",
             {"project_name": "Test Project", "repo_name": "integration-service"},
@@ -321,9 +311,7 @@ class TestPRCycleTimeTools:
             {"success": True, "data": []},
             {"success": True, "data": []},
         ]
-        result_toon = await tools.call_tool(
-            "get_pr_cycle_time", {"project_name": "Test Project"}
-        )
+        result_toon = await tools.call_tool("get_pr_cycle_time", {"project_name": "Test Project"})
         result = toon_decode(result_toon)
         assert result["success"] is False
         assert "Failed to retrieve" in result["error"]
@@ -337,9 +325,7 @@ class TestPRCycleTimeTools:
             {"success": True, "data": []},
             {"success": True, "data": []},
         ]
-        result_toon = await tools.call_tool(
-            "get_pr_cycle_time", {"project_name": "Test Project"}
-        )
+        result_toon = await tools.call_tool("get_pr_cycle_time", {"project_name": "Test Project"})
         result = toon_decode(result_toon)
         assert result["success"] is False
         assert "No merged PRs" in result["error"]
@@ -401,9 +387,7 @@ class TestPRCycleTimeTools:
                 ],
             },
         ]
-        result_toon = await tools.call_tool(
-            "get_pr_cycle_time", {"project_name": "Test Project"}
-        )
+        result_toon = await tools.call_tool("get_pr_cycle_time", {"project_name": "Test Project"})
         result = toon_decode(result_toon)
         assert result["success"] is True
         assert "weekly_trends" not in result
@@ -411,9 +395,7 @@ class TestPRCycleTimeTools:
 
     @pytest.mark.asyncio
     async def test_execute_with_timeout(self, tools, mock_db_connection):
-        mock_db_connection.execute_query = AsyncMock(
-            return_value={"success": True, "data": []}
-        )
+        mock_db_connection.execute_query = AsyncMock(return_value={"success": True, "data": []})
         result = await tools._execute_with_timeout("SELECT 1", 1)
         assert result == {"success": True, "data": []}
 

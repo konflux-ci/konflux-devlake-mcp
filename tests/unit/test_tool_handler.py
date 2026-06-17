@@ -31,9 +31,7 @@ class TestToolHandlerInit:
 
     def test_init_rbac_enabled_with_auth_service(self):
         auth_svc = Mock()
-        handler = ToolHandler(
-            Mock(), Mock(), authorization_service=auth_svc, rbac_enabled=True
-        )
+        handler = ToolHandler(Mock(), Mock(), authorization_service=auth_svc, rbac_enabled=True)
         assert handler.rbac_enabled is True
         assert handler.authorization_service is auth_svc
 
@@ -74,9 +72,7 @@ class TestHandleToolCall:
         auth_svc = Mock()
         auth_svc.is_authorized.return_value = False
         auth_svc.get_denied_reason.return_value = "Not authorized"
-        handler = ToolHandler(
-            Mock(), Mock(), authorization_service=auth_svc, rbac_enabled=True
-        )
+        handler = ToolHandler(Mock(), Mock(), authorization_service=auth_svc, rbac_enabled=True)
         set_user_context({"username": "bob"})
         result = await handler.handle_tool_call("admin_tool", {})
         parsed = json.loads(result[0].text)
@@ -87,9 +83,7 @@ class TestHandleToolCall:
     @pytest.mark.asyncio
     async def test_rbac_no_user_context(self):
         auth_svc = Mock()
-        handler = ToolHandler(
-            Mock(), Mock(), authorization_service=auth_svc, rbac_enabled=True
-        )
+        handler = ToolHandler(Mock(), Mock(), authorization_service=auth_svc, rbac_enabled=True)
         set_user_context(None)
         result = await handler.handle_tool_call("admin_tool", {})
         parsed = json.loads(result[0].text)
@@ -103,9 +97,7 @@ class TestHandleToolCall:
         tools_mgr = Mock()
         tools_mgr.call_tool = AsyncMock(return_value='{"success": true}')
         sec_mgr = Mock()
-        handler = ToolHandler(
-            tools_mgr, sec_mgr, authorization_service=auth_svc, rbac_enabled=True
-        )
+        handler = ToolHandler(tools_mgr, sec_mgr, authorization_service=auth_svc, rbac_enabled=True)
         set_user_context({"username": "alice"})
         result = await handler.handle_tool_call("some_tool", {})
         assert "true" in result[0].text
@@ -129,9 +121,7 @@ class TestValidateToolRequest:
 
     @pytest.mark.asyncio
     async def test_execute_query_valid(self, handler):
-        result = await handler._validate_tool_request(
-            "execute_query", {"query": "SELECT 1"}
-        )
+        result = await handler._validate_tool_request("execute_query", {"query": "SELECT 1"})
         assert result["valid"] is True
 
     @pytest.mark.asyncio
@@ -163,9 +153,7 @@ class TestValidateToolRequest:
             False,
             "bad db name",
         )
-        result = await handler._validate_tool_request(
-            "list_tables", {"database": "../../etc"}
-        )
+        result = await handler._validate_tool_request("list_tables", {"database": "../../etc"})
         assert result["valid"] is False
         assert "Database name" in result["error"]
 
@@ -216,9 +204,7 @@ class TestCreateErrorResponse:
         assert "tool_name" not in parsed
 
     def test_error_with_tool_info(self, handler):
-        result = handler._create_error_response(
-            "Failed", tool_name="my_tool", arguments={"x": 1}
-        )
+        result = handler._create_error_response("Failed", tool_name="my_tool", arguments={"x": 1})
         parsed = json.loads(result[0].text)
         assert parsed["tool_name"] == "my_tool"
         assert parsed["arguments"] == {"x": 1}
