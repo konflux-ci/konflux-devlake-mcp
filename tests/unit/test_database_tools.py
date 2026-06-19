@@ -76,7 +76,10 @@ class TestDatabaseTools:
     @pytest.mark.asyncio
     async def test_connect_database_tool_failure(self, database_tools, mock_db_connection):
         """Test database connection failure."""
-        mock_db_connection.connect.return_value = {"success": False, "error": "Connection failed"}
+        mock_db_connection.connect.return_value = {
+            "success": False,
+            "error": "Connection failed",
+        }
 
         result_toon = await database_tools.call_tool("connect_database", {})
         result = toon_decode(result_toon)
@@ -201,6 +204,95 @@ class TestDatabaseTools:
 
         assert result["success"] is False
         assert "Database error" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_execute_query_success(self, database_tools, mock_db_connection):
+        """Test successful custom query execution."""
+        mock_db_connection.execute_query.return_value = {
+            "success": True,
+            "data": [{"count": 42}],
+        }
+        result_toon = await database_tools.call_tool(
+            "execute_query",
+            {"query": "SELECT COUNT(*) as count FROM lake.pull_requests"},
+        )
+        result = toon_decode(result_toon)
+        assert result["success"] is True
+        assert result["data"][0]["count"] == 42
+        mock_db_connection.execute_query.assert_called_once_with(
+            "SELECT COUNT(*) as count FROM lake.pull_requests", 100
+        )
+
+    @pytest.mark.asyncio
+    async def test_execute_query_with_limit(self, database_tools, mock_db_connection):
+        """Test custom query with explicit limit."""
+        mock_db_connection.execute_query.return_value = {
+            "success": True,
+            "data": [],
+        }
+        result_toon = await database_tools.call_tool(
+            "execute_query", {"query": "SELECT 1", "limit": 50}
+        )
+        result = toon_decode(result_toon)
+        assert result["success"] is True
+        mock_db_connection.execute_query.assert_called_once_with("SELECT 1", 50)
+
+    @pytest.mark.asyncio
+    async def test_execute_query_missing_query(self, database_tools):
+        """Test execute_query with empty query."""
+        result_toon = await database_tools.call_tool("execute_query", {})
+        result = toon_decode(result_toon)
+        assert result["success"] is False
+        assert "Query is required" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_execute_query_exception(self, database_tools, mock_db_connection):
+        """Test execute_query error handling."""
+        mock_db_connection.execute_query.side_effect = Exception("Query timeout")
+        result_toon = await database_tools.call_tool(
+            "execute_query", {"query": "SELECT SLEEP(100)"}
+        )
+        result = toon_decode(result_toon)
+        assert result["success"] is False
+        assert "Query timeout" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_list_tables_exception(self, database_tools, mock_db_connection):
+        """Test list_tables error handling."""
+        mock_db_connection.execute_query.side_effect = Exception("Access denied")
+        result_toon = await database_tools.call_tool("list_tables", {"database": "secret_db"})
+        result = toon_decode(result_toon)
+        assert result["success"] is False
+        assert "Access denied" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_get_table_schema_exception(self, database_tools, mock_db_connection):
+        """Test get_table_schema error handling."""
+        mock_db_connection.execute_query.side_effect = Exception("Table not found")
+        result_toon = await database_tools.call_tool(
+            "get_table_schema", {"database": "lake", "table": "nonexistent"}
+        )
+        result = toon_decode(result_toon)
+        assert result["success"] is False
+        assert "Table not found" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_connect_database_exception(self, database_tools, mock_db_connection):
+        """Test connect_database error handling."""
+        mock_db_connection.connect.side_effect = Exception("Connection refused")
+        result_toon = await database_tools.call_tool("connect_database", {})
+        result = toon_decode(result_toon)
+        assert result["success"] is False
+        assert "Connection refused" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_list_databases_exception(self, database_tools, mock_db_connection):
+        """Test list_databases error handling."""
+        mock_db_connection.execute_query.side_effect = Exception("Permission denied")
+        result_toon = await database_tools.call_tool("list_databases", {})
+        result = toon_decode(result_toon)
+        assert result["success"] is False
+        assert "Permission denied" in result["error"]
 
     def test_tool_input_schemas_are_valid(self, database_tools):
         """Test that all tools have valid input schemas."""
