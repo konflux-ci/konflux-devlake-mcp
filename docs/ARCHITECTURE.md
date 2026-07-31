@@ -210,7 +210,7 @@ SQL Generated:
     COUNT(*) as retest_count
   FROM lake.pull_request_comments prc
   INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
-  WHERE prc.body LIKE '%/retest%'
+  WHERE (prc.body LIKE '%/retest%' OR prc.body LIKE '%/rerun%')
     AND pr.url LIKE '%integration-service%'
   GROUP BY pr.id, pr.title, pr.url
   ORDER BY retest_count DESC
@@ -815,7 +815,7 @@ logger.warning("Potential SQL injection detected")
 #### PR Retest Analysis Tools
 
 **`analyze_pr_retests`**
-- **Description**: Comprehensive analysis of pull requests that required manual retest commands (comments containing '/retest'). Provides detailed statistics, pattern analysis, and actionable recommendations.
+- **Description**: Comprehensive analysis of pull requests that required manual retest commands (comments containing '/retest' or '/rerun'). Provides detailed statistics, pattern analysis, and actionable recommendations.
 - **Arguments**:
   - `repo_name` (string, optional): Repository name to analyze (e.g., 'integration-service')
   - `project_name` (string, optional): DevLake project name (e.g., 'Secureflow - Konflux - Global')
@@ -832,7 +832,7 @@ logger.warning("Potential SQL injection detected")
   - Pattern analysis by PR status
   - Actionable recommendations
 - **Features**:
-  - Exact `/retest` command matching (case-insensitive, handles quoted comments)
+  - Exact `/retest` and `/rerun` command matching (case-insensitive, handles quoted comments)
   - Project and repository filtering via `project_mapping` table
   - Bot comment exclusion
   - Token-efficient TOON format (30-60% reduction vs JSON)

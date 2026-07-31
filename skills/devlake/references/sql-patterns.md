@@ -112,7 +112,7 @@ ORDER BY pr.created_date ASC
 LIMIT 30
 ```
 
-## Retest Detection (PRs with /retest comments)
+## Retest Detection (PRs with /retest or /rerun comments)
 
 > Prefer the `analyze_pr_retests` MCP tool for this analysis.
 
@@ -128,7 +128,7 @@ JOIN lake.repos r ON pr.base_repo_id = r.id
 JOIN lake.project_mapping pm ON r.id = pm.row_id
   AND pm.`table` = 'repos'
 WHERE pm.project_name = '{PROJECT_NAME}'
-  AND prc.body LIKE '%/retest%'
+  AND (prc.body LIKE '%/retest%' OR prc.body LIKE '%/rerun%')
   AND pr.created_date >= DATE_SUB(NOW(), INTERVAL 90 DAY)
 GROUP BY pr.id, pr.title, pr.url, pr.status
 HAVING COUNT(prc.id) > 3

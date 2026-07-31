@@ -2,8 +2,8 @@
 """
 PR Retest Analysis Tools for Konflux DevLake MCP Server
 
-Contains tools for analyzing pull requests that required manual retest commands
-(comments containing "/retest") with comprehensive statistics and insights.
+Contains tools for analyzing pull requests that required manual retest/rerun commands
+(comments containing "/retest" or "/rerun") with comprehensive statistics and insights.
 """
 
 from typing import Any, Dict, List
@@ -20,7 +20,7 @@ class PRRetestTools(BaseTool):
     PR Retest Analysis tools for Konflux DevLake MCP Server.
 
     This class provides tools for analyzing pull requests that required
-    manual retest commands, identifying patterns, and providing actionable insights.
+    manual retest/rerun commands, identifying patterns, and providing actionable insights.
     """
 
     def __init__(self, db_connection):
@@ -46,7 +46,8 @@ class PRRetestTools(BaseTool):
                 description=(
                     "**Comprehensive PR Retest Analysis Tool** - Analyzes all pull requests "
                     "in a repository within a DevLake project that required manual retest "
-                    "commands (comments containing '/retest'). Provides detailed statistics "
+                    "commands (comments containing '/retest' or '/rerun'). Provides "
+                    "detailed statistics "
                     "including: total count of manual retest comments (excluding bot comments), "
                     "number of PRs affected, average retests per PR, top PRs with most retests "
                     "(including repo name, PR title, URL, number of retests, PR duration, "
@@ -237,7 +238,7 @@ class PRRetestTools(BaseTool):
 
             # Build bot exclusion filter
             # 1. Exclude known bot account
-            # 2. Filter by comment length (real /retest commands are short, < 20 chars)
+            # 2. Filter by comment length (real /retest and /rerun commands are short, < 20 chars)
             #    This excludes bot messages like "say **/retest** to rerun failed tests"
             bot_filter = ""
             if exclude_bots:
@@ -254,7 +255,8 @@ class PRRetestTools(BaseTool):
                 FROM lake.pull_request_comments prc
                 INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
+                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', ''))
+                    IN ('/retest', '/rerun')
                     AND prc.body IS NOT NULL
                     AND prc.body != ''
                     {repo_filter}
@@ -294,7 +296,8 @@ class PRRetestTools(BaseTool):
                 FROM lake.pull_request_comments prc
                 INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
+                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', ''))
+                    IN ('/retest', '/rerun')
                     AND prc.body IS NOT NULL
                     AND prc.body != ''
                     {repo_filter}
@@ -317,7 +320,8 @@ class PRRetestTools(BaseTool):
                 FROM lake.pull_request_comments prc
                 INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
+                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', ''))
+                    IN ('/retest', '/rerun')
                     AND prc.body IS NOT NULL
                     AND prc.body != ''
                     {repo_filter}
@@ -351,7 +355,8 @@ class PRRetestTools(BaseTool):
                 FROM lake.pull_request_comments prc
                 INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
+                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', ''))
+                    IN ('/retest', '/rerun')
                     AND prc.body IS NOT NULL
                     AND prc.body != ''
                     {repo_filter}
@@ -379,7 +384,8 @@ class PRRetestTools(BaseTool):
                 FROM lake.pull_request_comments prc
                 INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
+                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', ''))
+                    IN ('/retest', '/rerun')
                     AND prc.body IS NOT NULL
                     AND prc.body != ''
                     {repo_filter}
@@ -403,7 +409,8 @@ class PRRetestTools(BaseTool):
                 FROM lake.pull_request_comments prc
                 INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
+                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', ''))
+                    IN ('/retest', '/rerun')
                     AND prc.body IS NOT NULL
                     AND prc.body != ''
                     {repo_filter}
@@ -430,7 +437,8 @@ class PRRetestTools(BaseTool):
                 FROM lake.pull_request_comments prc
                 INNER JOIN lake.pull_requests pr ON prc.pull_request_id = pr.id
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', '')) = '/retest'
+                WHERE LOWER(REPLACE(REPLACE(TRIM(prc.body), '"', ''), '''', ''))
+                    IN ('/retest', '/rerun')
                     AND prc.body IS NOT NULL
                     AND prc.body != ''
                     {repo_filter}

@@ -169,7 +169,7 @@ This server provides several specialized tools for working with your DevLake dat
 - **Database Tools**: Connect to your database, list available databases and tables, execute custom SQL queries, and get detailed table schemas
 - **Incident Analysis**: Get unique incidents with automatic deduplication, analyze incident patterns, and track resolution times. Returns data in TOON format for token efficiency.
 - **Deployment Tracking**: Monitor deployment data with advanced filtering, track deployment frequency, and analyze service distribution
-- **PR Retest Analysis**: Comprehensive analysis of pull requests that required manual retest commands (`/retest`). Provides detailed statistics including:
+- **PR Retest Analysis**: Comprehensive analysis of pull requests that required manual retest commands (`/retest` or `/rerun`). Provides detailed statistics including:
   - Total count of manual retest comments (excluding bot comments)
   - Number of PRs affected and average retests per PR
   - Top PRs with most retests (including PR title, URL, duration, changes, and status)

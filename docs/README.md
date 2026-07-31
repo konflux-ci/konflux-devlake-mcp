@@ -50,7 +50,7 @@ All diagrams are in Mermaid format and can be viewed in any Mermaid-compatible v
 ### Quality Reports
 
 - **[Retest Analysis Prompt](./.prompts/quality_reports/retest_average.md)** - Prompt template for analyzing PR retest patterns
-- **PR Retest Analysis Tool**: Comprehensive tool for analyzing pull requests that required manual retest commands, with project/repository filtering, pattern analysis, and actionable recommendations
+- **PR Retest Analysis Tool**: Comprehensive tool for analyzing pull requests that required manual retest commands (`/retest` or `/rerun`), with project/repository filtering, pattern analysis, and actionable recommendations
 
 ## Viewing Diagrams
 

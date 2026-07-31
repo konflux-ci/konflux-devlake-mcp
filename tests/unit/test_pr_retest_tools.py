@@ -213,6 +213,16 @@ class TestPRRetestTools:
         assert retest_tools._analyze_patterns([], []) == []
 
     @pytest.mark.asyncio
+    async def test_analyze_pr_retests_sql_includes_rerun(self, retest_tools, mock_db_connection):
+        """Verify that SQL queries match both /retest and /rerun commands."""
+        mock_db_connection.execute_query.side_effect = self._make_default_side_effect()
+        await retest_tools.call_tool("analyze_pr_retests", {})
+
+        for call in mock_db_connection.execute_query.call_args_list:
+            query = call[0][0]
+            assert "IN ('/retest', '/rerun')" in query
+
+    @pytest.mark.asyncio
     async def test_get_repos_for_project(self, retest_tools, mock_db_connection):
         mock_db_connection.execute_query.return_value = {
             "success": True,
