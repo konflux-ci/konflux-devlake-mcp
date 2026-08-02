@@ -1,6 +1,6 @@
 # Manual Retest Analysis Prompt
 
-This prompt generates a comprehensive analysis of manual retest activity (comments containing `/retest`) across pull requests in a specific repository within the Secureflow - Konflux - Global project. The analysis helps identify patterns, root causes, and actionable insights to improve CI/CD reliability and reduce developer friction.
+This prompt generates a comprehensive analysis of manual retest activity (comments containing `/retest` or `/rerun`) across pull requests in a specific repository within the Secureflow - Konflux - Global project. The analysis helps identify patterns, root causes, and actionable insights to improve CI/CD reliability and reduce developer friction.
 
 ## Usage
 
@@ -15,10 +15,10 @@ Replace placeholders with your specific values:
 ```txt
 I need a detailed analysis of all pull requests in the [REPO_NAME] repository
 within the [DevLake Project] project that required manual retest
-commands (comments containing "/retest") in the last [Desired time].
+commands (comments containing "/retest" or "/rerun") in the last [Desired time].
 
 Please provide:
-1. Total count of manual /retest comments (exclude bot comments)
+1. Total count of manual /retest and /rerun comments (exclude bot comments)
 2. Number of PRs affected
 3. Average retests per PR
 4. Top 10-15 PRs with most retests including:
@@ -46,7 +46,7 @@ The analysis should follow this structure:
 
 ### Executive Summary
 
-- Total manual `/retest` comments
+- Total manual `/retest` and `/rerun` comments
 - Number of affected PRs
 - Average retests per PR
 - Time period analyzed

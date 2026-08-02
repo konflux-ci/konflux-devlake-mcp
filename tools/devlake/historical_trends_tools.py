@@ -294,7 +294,7 @@ class HistoricalTrendsTools(BaseTool):
             JOIN lake.repos r ON prc.repo_id = r.id
             JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
             WHERE pm.project_name = '{project_name}'
-                AND prc.body LIKE '%/retest%'
+                AND (prc.body LIKE '%/retest%' OR prc.body LIKE '%/rerun%')
                 AND prc.created_date >= DATE_SUB(NOW(), INTERVAL {days} DAY)
             GROUP BY YEARWEEK(prc.created_date, 1)
             ORDER BY week DESC
