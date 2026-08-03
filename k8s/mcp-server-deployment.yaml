@@ -36,6 +36,12 @@ spec:
         - name: logs-volume
           persistentVolumeClaim:
             claimName: konflux-devlake-mcp-logs
+        - name: rds-ca-certs
+          secret:
+            secretName: konflux-devlake-rds-ca
+            items:
+              - key: AWS_RDS_CRTS
+                path: rds-combined-ca-bundle.pem
       containers:
         - name: mcp-server
           image: quay.io/konflux-ci/konflux-devprod/devlake-mcp-server:latest
@@ -70,6 +76,11 @@ spec:
                 secretKeyRef:
                   name: konflux-devlake-secrets
                   key: MYSQL_PASSWORD
+            # Database SSL/TLS configuration
+            - name: DB_SSL
+              value: "true"
+            - name: DB_SSL_CA
+              value: "/app/certs/rds-combined-ca-bundle.pem"
             # Server configuration
             - name: SERVER_HOST
               value: 0.0.0.0
@@ -225,3 +236,6 @@ spec:
           volumeMounts:
             - name: logs-volume
               mountPath: /app/logs
+            - name: rds-ca-certs
+              mountPath: /app/certs
+              readOnly: true

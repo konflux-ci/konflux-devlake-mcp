@@ -11,6 +11,7 @@ This module provides robust database connection management with:
 
 import asyncio
 import json
+import ssl as ssl_module
 import time
 from datetime import datetime, date
 from decimal import Decimal
@@ -126,6 +127,14 @@ class KonfluxDevLakeConnection:
                     max_size = self.config.get("pool_max_size", self.DEFAULT_MAX_CONNECTIONS)
                     pool_recycle = self.config.get("pool_recycle", self.DEFAULT_POOL_RECYCLE)
 
+                    # SSL/TLS configuration
+                    ssl_ctx = None
+                    if self.config.get("ssl_enabled"):
+                        ssl_ctx = ssl_module.create_default_context()
+                        ca_path = self.config.get("ssl_ca_path")
+                        if ca_path:
+                            ssl_ctx.load_verify_locations(ca_path)
+
                     self._pool = await aiomysql.create_pool(
                         host=self.config["host"],
                         port=self.config["port"],
@@ -139,6 +148,7 @@ class KonfluxDevLakeConnection:
                         autocommit=True,
                         cursorclass=aiomysql.DictCursor,
                         echo=False,
+                        ssl=ssl_ctx,
                     )
 
                     # Test the pool with a simple query
@@ -150,7 +160,8 @@ class KonfluxDevLakeConnection:
                     self._last_health_check = time.time()
                     self.logger.info(
                         f"Connection pool created successfully "
-                        f"(min={min_size}, max={max_size}, recycle={pool_recycle}s)"
+                        f"(min={min_size}, max={max_size}, recycle={pool_recycle}s, "
+                        f"ssl={'enabled' if ssl_ctx else 'disabled'})"
                     )
                     log_database_operation("connect", success=True)
 
