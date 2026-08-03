@@ -25,6 +25,8 @@ class TestDatabaseConfig:
         assert config.user == "root"
         assert config.password == ""
         assert config.database == ""
+        assert config.ssl_enabled is False
+        assert config.ssl_ca_path == ""
 
     def test_database_config_custom_values(self):
         """Test DatabaseConfig with custom values."""
@@ -178,6 +180,8 @@ class TestKonfluxDevLakeConfig:
             "pool_min_size": 5,
             "pool_max_size": 50,
             "pool_recycle": 300,
+            "ssl_enabled": False,
+            "ssl_ca_path": "",
         }
 
         assert db_config == expected
@@ -300,3 +304,59 @@ class TestKonfluxDevLakeConfig:
 
             config.database.host = "modified-host"
             assert config.database.host == "modified-host"
+
+    def test_ssl_defaults(self):
+        """Test that SSL defaults to disabled with no CA path."""
+        with patch.dict(os.environ, {}, clear=True):
+            config = KonfluxDevLakeConfig()
+
+            assert config.database.ssl_enabled is False
+            assert config.database.ssl_ca_path == ""
+
+    def test_ssl_enabled_from_env(self):
+        """Test that DB_SSL=true enables SSL."""
+        env_vars = {"DB_SSL": "true"}
+
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = KonfluxDevLakeConfig()
+
+            assert config.database.ssl_enabled is True
+
+    def test_ssl_enabled_case_insensitive(self):
+        """Test that DB_SSL parsing is case-insensitive."""
+        for value in ("True", "TRUE", "true"):
+            with patch.dict(os.environ, {"DB_SSL": value}, clear=True):
+                config = KonfluxDevLakeConfig()
+                assert config.database.ssl_enabled is True
+
+    def test_ssl_disabled_explicit(self):
+        """Test that DB_SSL=false keeps SSL disabled."""
+        env_vars = {"DB_SSL": "false"}
+
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = KonfluxDevLakeConfig()
+
+            assert config.database.ssl_enabled is False
+
+    def test_ssl_ca_path_from_env(self):
+        """Test that DB_SSL_CA sets the CA certificate path."""
+        env_vars = {"DB_SSL_CA": "/app/certs/rds-combined-ca-bundle.pem"}
+
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = KonfluxDevLakeConfig()
+
+            assert config.database.ssl_ca_path == "/app/certs/rds-combined-ca-bundle.pem"
+
+    def test_ssl_config_in_get_database_config(self):
+        """Test that SSL fields are included in get_database_config() output."""
+        env_vars = {
+            "DB_SSL": "true",
+            "DB_SSL_CA": "/path/to/ca.pem",
+        }
+
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = KonfluxDevLakeConfig()
+            db_config = config.get_database_config()
+
+            assert db_config["ssl_enabled"] is True
+            assert db_config["ssl_ca_path"] == "/path/to/ca.pem"

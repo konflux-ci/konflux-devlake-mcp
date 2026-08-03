@@ -22,6 +22,8 @@ class DatabaseConfig:
         pool_min_size=5,
         pool_max_size=50,
         pool_recycle=300,
+        ssl_enabled=False,
+        ssl_ca_path="",
     ):
         self.host = host
         self.port = port
@@ -35,6 +37,9 @@ class DatabaseConfig:
         self.pool_min_size = pool_min_size
         self.pool_max_size = pool_max_size
         self.pool_recycle = pool_recycle
+        # SSL/TLS settings for secure database connections
+        self.ssl_enabled = ssl_enabled
+        self.ssl_ca_path = ssl_ca_path
 
 
 class ServerConfig:
@@ -130,6 +135,9 @@ class KonfluxDevLakeConfig:
         self.database.pool_recycle = int(
             os.getenv("DB_POOL_RECYCLE", str(self.database.pool_recycle))
         )
+        # SSL/TLS configuration
+        self.database.ssl_enabled = os.getenv("DB_SSL", "false").lower() == "true"
+        self.database.ssl_ca_path = os.getenv("DB_SSL_CA", self.database.ssl_ca_path)
 
         # Server configuration
         self.server.transport = os.getenv("TRANSPORT", self.server.transport)
@@ -186,6 +194,8 @@ class KonfluxDevLakeConfig:
             "pool_min_size": self.database.pool_min_size,
             "pool_max_size": self.database.pool_max_size,
             "pool_recycle": self.database.pool_recycle,
+            "ssl_enabled": self.database.ssl_enabled,
+            "ssl_ca_path": self.database.ssl_ca_path,
         }
 
     def get_server_config(self) -> dict:

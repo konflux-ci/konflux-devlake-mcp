@@ -9,6 +9,8 @@ Tests the KonfluxDevLakeConnection class functionality including:
 - Connection info retrieval
 """
 
+import ssl as ssl_module
+
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -372,3 +374,115 @@ class TestKonfluxDevLakeConnection:
         mock_pool = MagicMock()
         connection._pool = mock_pool
         assert connection.connection is mock_pool
+
+    @pytest.mark.asyncio
+    async def test_connect_ssl_disabled_passes_none(self, db_config):
+        """Test that ssl_enabled=False passes ssl=None to create_pool."""
+        db_config["ssl_enabled"] = False
+        connection = KonfluxDevLakeConnection(db_config)
+
+        mock_pool = MagicMock()
+        mock_pool.closed = False
+        mock_pool.size = 2
+        mock_pool.freesize = 2
+        mock_pool.minsize = 2
+        mock_pool.maxsize = 10
+
+        mock_cursor = AsyncMock()
+        mock_cursor.execute = AsyncMock()
+        mock_cursor.fetchone = AsyncMock(return_value={"version": "8.0.32"})
+        mock_cursor.__aenter__ = AsyncMock(return_value=mock_cursor)
+        mock_cursor.__aexit__ = AsyncMock(return_value=None)
+
+        mock_conn = AsyncMock()
+        mock_conn.cursor = MagicMock(return_value=mock_cursor)
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=None)
+
+        mock_pool.acquire = MagicMock(return_value=mock_conn)
+
+        with patch("utils.db.aiomysql.create_pool", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_pool
+            result = await connection.connect()
+
+        assert result["success"] is True
+        call_kwargs = mock_create.call_args[1]
+        assert call_kwargs["ssl"] is None
+
+    @pytest.mark.asyncio
+    async def test_connect_ssl_enabled_passes_context(self, db_config):
+        """Test that ssl_enabled=True passes an ssl.SSLContext to create_pool."""
+        db_config["ssl_enabled"] = True
+        connection = KonfluxDevLakeConnection(db_config)
+
+        mock_pool = MagicMock()
+        mock_pool.closed = False
+        mock_pool.size = 2
+        mock_pool.freesize = 2
+        mock_pool.minsize = 2
+        mock_pool.maxsize = 10
+
+        mock_cursor = AsyncMock()
+        mock_cursor.execute = AsyncMock()
+        mock_cursor.fetchone = AsyncMock(return_value={"version": "8.0.32"})
+        mock_cursor.__aenter__ = AsyncMock(return_value=mock_cursor)
+        mock_cursor.__aexit__ = AsyncMock(return_value=None)
+
+        mock_conn = AsyncMock()
+        mock_conn.cursor = MagicMock(return_value=mock_cursor)
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=None)
+
+        mock_pool.acquire = MagicMock(return_value=mock_conn)
+
+        with patch("utils.db.aiomysql.create_pool", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_pool
+            result = await connection.connect()
+
+        assert result["success"] is True
+        call_kwargs = mock_create.call_args[1]
+        assert isinstance(call_kwargs["ssl"], ssl_module.SSLContext)
+
+    @pytest.mark.asyncio
+    async def test_connect_ssl_with_ca_path(self, db_config):
+        """Test that ssl_enabled=True with ssl_ca_path loads the CA file."""
+        db_config["ssl_enabled"] = True
+        db_config["ssl_ca_path"] = "/app/certs/rds-combined-ca-bundle.pem"
+        connection = KonfluxDevLakeConnection(db_config)
+
+        mock_pool = MagicMock()
+        mock_pool.closed = False
+        mock_pool.size = 2
+        mock_pool.freesize = 2
+        mock_pool.minsize = 2
+        mock_pool.maxsize = 10
+
+        mock_cursor = AsyncMock()
+        mock_cursor.execute = AsyncMock()
+        mock_cursor.fetchone = AsyncMock(return_value={"version": "8.0.32"})
+        mock_cursor.__aenter__ = AsyncMock(return_value=mock_cursor)
+        mock_cursor.__aexit__ = AsyncMock(return_value=None)
+
+        mock_conn = AsyncMock()
+        mock_conn.cursor = MagicMock(return_value=mock_cursor)
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=None)
+
+        mock_pool.acquire = MagicMock(return_value=mock_conn)
+
+        with (
+            patch("utils.db.aiomysql.create_pool", new_callable=AsyncMock) as mock_create,
+            patch("utils.db.ssl_module.create_default_context") as mock_ssl_ctx,
+        ):
+            mock_ctx_instance = MagicMock(spec=ssl_module.SSLContext)
+            mock_ssl_ctx.return_value = mock_ctx_instance
+            mock_create.return_value = mock_pool
+            result = await connection.connect()
+
+        assert result["success"] is True
+        mock_ssl_ctx.assert_called_once()
+        mock_ctx_instance.load_verify_locations.assert_called_once_with(
+            "/app/certs/rds-combined-ca-bundle.pem"
+        )
+        call_kwargs = mock_create.call_args[1]
+        assert call_kwargs["ssl"] is mock_ctx_instance
