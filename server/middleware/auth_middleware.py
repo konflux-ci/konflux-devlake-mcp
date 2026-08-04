@@ -12,7 +12,6 @@ from typing import Any, Callable, Dict, Optional
 from starlette.responses import JSONResponse
 
 from server.middleware.oidc_auth import OIDCAuthenticator, OIDCConfig
-from server.handlers.tool_handler import set_user_context
 from utils.logger import get_logger
 
 
@@ -100,17 +99,13 @@ class AuthMiddleware:
             return
 
         # Add user info to scope for downstream handlers
-        user_info = {
+        scope["user"] = {
             "id": result.user_id,
             "username": result.username,
             "email": result.email,
             "groups": result.groups,
             "scopes": result.scopes,
         }
-        scope["user"] = user_info
-
-        # Set user context for RBAC authorization in tool handler
-        set_user_context(user_info)
 
         self.logger.debug(
             f"Authenticated request from user: {result.username}",
@@ -118,16 +113,10 @@ class AuthMiddleware:
                 "path": path,
                 "user_id": result.user_id,
                 "username": result.username,
-                "groups": result.groups,
             },
         )
 
-        # Pass request to the application
-        try:
-            await self.app(scope, receive, send)
-        finally:
-            # Clear user context after request completes
-            set_user_context(None)
+        await self.app(scope, receive, send)
 
 
 def create_auth_middleware(

@@ -1,46 +1,9 @@
 #!/usr/bin/env python3
 import json
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, AsyncMock
 
-from server.handlers.tool_handler import (
-    ToolHandler,
-    set_user_context,
-    get_user_context,
-)
-
-
-@pytest.mark.unit
-class TestUserContext:
-    def test_set_and_get(self):
-        set_user_context({"username": "alice"})
-        assert get_user_context() == {"username": "alice"}
-        set_user_context(None)
-
-    def test_default_none(self):
-        set_user_context(None)
-        assert get_user_context() is None
-
-
-@pytest.mark.unit
-class TestToolHandlerInit:
-    def test_init_rbac_disabled(self):
-        handler = ToolHandler(Mock(), Mock(), rbac_enabled=False)
-        assert handler.rbac_enabled is False
-        assert handler.authorization_service is None
-
-    def test_init_rbac_enabled_with_auth_service(self):
-        auth_svc = Mock()
-        handler = ToolHandler(Mock(), Mock(), authorization_service=auth_svc, rbac_enabled=True)
-        assert handler.rbac_enabled is True
-        assert handler.authorization_service is auth_svc
-
-    @patch("server.handlers.tool_handler.AuthorizationService")
-    def test_init_rbac_enabled_creates_auth_service(self, mock_auth_cls):
-        mock_auth_cls.return_value = Mock()
-        handler = ToolHandler(Mock(), Mock(), rbac_enabled=True)
-        assert handler.authorization_service is not None
-        mock_auth_cls.assert_called_once()
+from server.handlers.tool_handler import ToolHandler
 
 
 @pytest.mark.unit
@@ -50,7 +13,7 @@ class TestHandleToolCall:
         tools_mgr = Mock()
         tools_mgr.call_tool = AsyncMock(return_value='{"success": true}')
         sec_mgr = Mock()
-        return ToolHandler(tools_mgr, sec_mgr, rbac_enabled=False)
+        return ToolHandler(tools_mgr, sec_mgr)
 
     @pytest.mark.asyncio
     async def test_success(self, handler):
@@ -67,42 +30,6 @@ class TestHandleToolCall:
         assert parsed["success"] is False
         assert "boom" in parsed["error"]
 
-    @pytest.mark.asyncio
-    async def test_rbac_denied(self):
-        auth_svc = Mock()
-        auth_svc.is_authorized.return_value = False
-        auth_svc.get_denied_reason.return_value = "Not authorized"
-        handler = ToolHandler(Mock(), Mock(), authorization_service=auth_svc, rbac_enabled=True)
-        set_user_context({"username": "bob"})
-        result = await handler.handle_tool_call("admin_tool", {})
-        parsed = json.loads(result[0].text)
-        assert parsed["success"] is False
-        assert "Not authorized" in parsed["error"]
-        set_user_context(None)
-
-    @pytest.mark.asyncio
-    async def test_rbac_no_user_context(self):
-        auth_svc = Mock()
-        handler = ToolHandler(Mock(), Mock(), authorization_service=auth_svc, rbac_enabled=True)
-        set_user_context(None)
-        result = await handler.handle_tool_call("admin_tool", {})
-        parsed = json.loads(result[0].text)
-        assert parsed["success"] is False
-        assert "authentication required" in parsed["error"]
-
-    @pytest.mark.asyncio
-    async def test_rbac_authorized(self):
-        auth_svc = Mock()
-        auth_svc.is_authorized.return_value = True
-        tools_mgr = Mock()
-        tools_mgr.call_tool = AsyncMock(return_value='{"success": true}')
-        sec_mgr = Mock()
-        handler = ToolHandler(tools_mgr, sec_mgr, authorization_service=auth_svc, rbac_enabled=True)
-        set_user_context({"username": "alice"})
-        result = await handler.handle_tool_call("some_tool", {})
-        assert "true" in result[0].text
-        set_user_context(None)
-
 
 @pytest.mark.unit
 class TestValidateToolRequest:
@@ -112,7 +39,7 @@ class TestValidateToolRequest:
         sec_mgr.validate_sql_query.return_value = (True, "")
         sec_mgr.validate_database_name.return_value = (True, "")
         sec_mgr.validate_table_name.return_value = (True, "")
-        return ToolHandler(Mock(), sec_mgr, rbac_enabled=False)
+        return ToolHandler(Mock(), sec_mgr)
 
     @pytest.mark.asyncio
     async def test_normal_tool_passes(self, handler):
@@ -174,7 +101,7 @@ class TestValidateToolRequest:
 class TestMaskSensitiveData:
     @pytest.fixture
     def handler(self):
-        return ToolHandler(Mock(), Mock(), rbac_enabled=False)
+        return ToolHandler(Mock(), Mock())
 
     def test_json_with_data(self, handler):
         result = handler._mask_sensitive_data(json.dumps({"data": [{"name": "test"}]}))
@@ -194,7 +121,7 @@ class TestMaskSensitiveData:
 class TestCreateErrorResponse:
     @pytest.fixture
     def handler(self):
-        return ToolHandler(Mock(), Mock(), rbac_enabled=False)
+        return ToolHandler(Mock(), Mock())
 
     def test_basic_error(self, handler):
         result = handler._create_error_response("Something failed")

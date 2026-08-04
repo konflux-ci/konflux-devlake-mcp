@@ -21,7 +21,7 @@ pre-commit run --all-files # Lint (black, flake8, yamllint)
 - `server/` — MCP server core (transport, handlers, factory, middleware)
 - `tools/` — Tool modules (BaseTool interface, auto-registered via ToolsManager)
 - `tools/devlake/` — DevLake-specific tools (PR cycle time, retests, deployments, etc.)
-- `utils/` — Config, DB connection, security, logging, RBAC
+- `utils/` — Config, DB connection, security, logging
 - `.claude-plugin/` — Claude Code plugin manifest
 - `skills/` — Claude Code skills (devlake, report, scaffold-report-repo)
 - `docs/.prompts/` — Standalone prompt templates for report generation
