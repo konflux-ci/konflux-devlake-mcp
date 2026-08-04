@@ -39,6 +39,7 @@ spec:
         - name: rds-ca-certs
           secret:
             secretName: konflux-devlake-rds-ca
+            optional: true
             items:
               - key: AWS_RDS_CRTS
                 path: rds-combined-ca-bundle.pem
@@ -161,17 +162,6 @@ spec:
               value: "3600"
             - name: SERVER_TIMEOUT_GRACEFUL_SHUTDOWN
               value: "300"
-            # IPA LDAP service account credentials
-            - name: LDAP_BIND_DN
-              valueFrom:
-                secretKeyRef:
-                  name: konflux-devlake-secrets
-                  key: LDAP_BIND_DN
-            - name: LDAP_BIND_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: konflux-devlake-secrets
-                  key: LDAP_BIND_PASSWORD
           resources:
             requests:
               cpu: "2"

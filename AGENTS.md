@@ -4,7 +4,7 @@ Python MCP server providing engineering metrics tools for Konflux DevLake databa
 
 ## Data Flow
 
-Request -> `server/handlers/tool_handler.py` (security + RBAC) -> `tools/tools_manager.py` (routing) -> `tools/devlake/<tool>.py` (SQL + logic) -> `utils/db.py` (async MySQL pool, type conversion) -> `toon_encode()` response
+Request -> `server/handlers/tool_handler.py` (security) -> `tools/tools_manager.py` (routing) -> `tools/devlake/<tool>.py` (SQL + logic) -> `utils/db.py` (async MySQL pool, type conversion) -> `toon_encode()` response
 
 ## Key Paths
 
@@ -18,8 +18,7 @@ Request -> `server/handlers/tool_handler.py` (security + RBAC) -> `tools/tools_m
 2. `get_tools()` -> `List[mcp.types.Tool]` with JSON `inputSchema`
 3. `async call_tool()` -> `toon_encode(result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})`
 4. Register in `tools/tools_manager.py` `_tool_modules` list
-5. Add tool name to `utils/rbac.py` viewer/admin permissions list
-6. Add unit test: `tests/unit/test_my_tool.py` with `@pytest.mark.unit`
+5. Add unit test: `tests/unit/test_my_tool.py` with `@pytest.mark.unit`
 7. Update `skills/devlake/` if tool interface or SQL changed (see Skill Update Rule)
 
 ## Test Suite

@@ -20,7 +20,7 @@ class TestMCPServerInit:
 
     @patch("server.core.mcp_server.ToolHandler")
     @patch("server.core.mcp_server.Server")
-    def test_init_without_oidc(
+    def test_init(
         self,
         mock_server_cls,
         mock_tool_handler_cls,
@@ -29,7 +29,7 @@ class TestMCPServerInit:
         mock_tools_manager,
         mock_security_manager,
     ):
-        """Test initialization when OIDC is not enabled."""
+        """Test server initialization."""
         mock_config.oidc.enabled = False
 
         server = KonfluxDevLakeMCPServer(
@@ -43,48 +43,10 @@ class TestMCPServerInit:
         assert server.db_connection is mock_db_connection
         assert server.tools_manager is mock_tools_manager
         assert server.security_manager is mock_security_manager
-        assert server.authorization_service is None
 
         mock_tool_handler_cls.assert_called_once_with(
             mock_tools_manager,
             mock_security_manager,
-            authorization_service=None,
-            rbac_enabled=False,
-        )
-
-    @patch("server.core.mcp_server.AuthorizationService")
-    @patch("server.core.mcp_server.ToolHandler")
-    @patch("server.core.mcp_server.Server")
-    def test_init_with_oidc(
-        self,
-        mock_server_cls,
-        mock_tool_handler_cls,
-        mock_auth_service_cls,
-        mock_config,
-        mock_db_connection,
-        mock_tools_manager,
-        mock_security_manager,
-    ):
-        """Test initialization when OIDC is enabled."""
-        mock_config.oidc.enabled = True
-        mock_auth_instance = Mock()
-        mock_auth_service_cls.return_value = mock_auth_instance
-
-        server = KonfluxDevLakeMCPServer(
-            config=mock_config,
-            db_connection=mock_db_connection,
-            tools_manager=mock_tools_manager,
-            security_manager=mock_security_manager,
-        )
-
-        assert server.authorization_service is mock_auth_instance
-        mock_auth_service_cls.assert_called_once()
-
-        mock_tool_handler_cls.assert_called_once_with(
-            mock_tools_manager,
-            mock_security_manager,
-            authorization_service=mock_auth_instance,
-            rbac_enabled=True,
         )
 
 
