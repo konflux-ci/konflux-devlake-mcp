@@ -1,7 +1,7 @@
 # Konflux DevLake MCP Server Requirements
 
 # Core MCP dependencies
-mcp>=1.23.0,<2.0.0
+mcp>=2.1.1,<2.2.0
 
 # Database connectivity
 pymysql>=1.1.0
