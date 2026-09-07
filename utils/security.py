@@ -6,9 +6,31 @@ Konflux DevLake MCP Server - Security Utility
 import re
 import secrets
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Tuple
 
 from utils.logger import get_logger
+
+# Blocklist for identifier values passed as bound parameters.  Since the
+# driver escapes these values, we only reject patterns that indicate an
+# injection *attempt* rather than characters that appear in legitimate
+# names (e.g. apostrophes in "O'Reilly").
+_SQL_INJECTION_RE = re.compile(
+    r";|--(?:\s|$)|/\*|\*/|\bUNION\s+SELECT\b",
+    re.IGNORECASE,
+)
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$")
+
+# Schemas that must never be queried (credential hashes, privilege info, internals).
+# Also REVOKE at the MySQL grant level as a separate hardening step.
+_BLOCKED_SCHEMAS = ("mysql", "information_schema", "performance_schema", "sys")
+
+# Extracts schema.table or bare table references after FROM, JOIN, a comma
+# (for comma-separated table lists), or DESCRIBE/DESC/SHOW TABLES FROM.
+# group(1) = schema or bare table, group(2) = table when schema is present.
+_TABLE_REF_RE = re.compile(
+    r"(?:FROM|JOIN|,|DESCRIBE|DESC)\s+`?(\w+)`?(?:\.`?(\w+)`?)?",
+    re.IGNORECASE,
+)
 
 
 class KonfluxDevLakeSecurityManager:
@@ -22,16 +44,195 @@ class KonfluxDevLakeSecurityManager:
         self.session_tokens = {}
         self.rate_limits = {}
 
-    def validate_sql_query(self, query: str) -> Tuple[bool, str]:
-        """Validate SQL query for security - ALLOWS ALL SELECT QUERIES"""
+    def validate_identifier(self, value: str, field_name: str = "identifier") -> str:
+        """Validate a project_name, repo_name, or similar identifier.
+
+        Uses a blocklist to reject SQL injection characters while allowing
+        legitimate values (including spaces, hyphens, etc.).
+
+        Args:
+            value: The identifier string to validate.
+            field_name: Name of the field for error messages.
+
+        Returns:
+            The validated string.
+
+        Raises:
+            ValueError: If the value contains disallowed characters or patterns.
+        """
+        if not value or len(value) > 256:
+            raise ValueError(f"Invalid {field_name}: must be 1-256 characters")
+        if _SQL_INJECTION_RE.search(value):
+            raise ValueError(f"Invalid {field_name}: contains disallowed characters or patterns")
+        return value
+
+    def validate_date_string(self, value: str, field_name: str = "date") -> str:
+        """Validate a date string is ISO-8601 format (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS).
+
+        Args:
+            value: The date string to validate.
+            field_name: Name of the field for error messages.
+
+        Returns:
+            The validated string.
+
+        Raises:
+            ValueError: If the value is not a valid date.
+        """
+        if not _ISO_DATE_RE.match(value):
+            raise ValueError(f"Invalid {field_name}: must be YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
         try:
-            # Convert to lowercase for easier checking
+            if len(value) == 10:
+                datetime.strptime(value, "%Y-%m-%d")
+            else:
+                datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            raise ValueError(f"Invalid {field_name}: not a valid date")
+        return value
+
+    def validate_positive_int(self, value, field_name: str = "value") -> int:
+        """Validate and cast a value to a non-negative integer.
+
+        Args:
+            value: The value to validate and cast.
+            field_name: Name of the field for error messages.
+
+        Returns:
+            The validated integer.
+
+        Raises:
+            ValueError: If the value is not a non-negative integer.
+        """
+        try:
+            int_val = int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid {field_name}: must be a positive integer")
+        if int_val < 0:
+            raise ValueError(f"Invalid {field_name}: must be non-negative")
+        return int_val
+
+    def is_table_denied(self, table_name: str, is_admin: bool = True) -> bool:
+        """Check whether access to a table should be denied.
+
+        Access tiers:
+        - DENY (always blocked): credentials, tokens, raw API blobs.
+        - ADMIN_ONLY: DevLake internal orchestration + vendor-specific _tool_* tables.
+          Currently allowed for everyone (is_admin defaults to True).
+        - ALLOW: normalized domain model tables (incidents, pull_requests, repos, ...).
+
+        Args:
+            table_name: The table name to check (may include backticks).
+            is_admin: Whether the caller has admin privileges.
+                # TODO(RBAC): Change default to False once role-based access
+                # control is wired in. Currently True so all users can reach
+                # ADMIN_ONLY tables.
+
+        Returns:
+            True if the table is denied for the given role, False otherwise.
+        """
+        name = table_name.lower().strip("`").strip()
+
+        # --- DENY tier: always blocked, regardless of role ---
+        if name in ("_devlake_api_keys", "auth_sessions"):
+            return True
+        if name.endswith("_connections"):
+            return True
+        if name.startswith("_raw_"):
+            return True
+
+        # --- ADMIN_ONLY tier: internal orchestration + vendor tool tables ---
+        # TODO(RBAC): Once roles are wired in, remove ``is_admin=True`` default
+        # above and pass the real caller role. These tables will then be blocked
+        # for non-admin users. Categories (308 tables total):
+        #   - _devlake_* : blueprints, pipelines, tasks, migration_history,
+        #                   locking, notifications, subtasks, store, etc.
+        #   - _tool_*    : github, jira, gitlab, codecov, copilot, bitbucket,
+        #                   jenkins, sonarqube, slack, pagerduty, opsgenie,
+        #                   rootly, argocd, bamboo, circleci, trello, zentao,
+        #                   tapd, teambition, asana, azuredevops, gitee, feishu,
+        #                   taiga, testmo, q_dev, claude_code, agentready,
+        #                   aireview, ae, etc.
+        if not is_admin:
+            if name.startswith("_devlake_"):
+                return True
+            if name.startswith("_tool_"):
+                return True
+
+        # --- ALLOW tier: normalized domain model tables ---
+        return False
+
+    def extract_and_check_table_refs(self, query: str) -> None:
+        """Extract FROM/JOIN table references and reject blocked schemas or denied tables.
+
+        Args:
+            query: The SQL query string to inspect.
+
+        Raises:
+            ValueError: If the query references a blocked schema or denied table.
+        """
+        for match in _TABLE_REF_RE.finditer(query):
+            if match.group(2):
+                schema = match.group(1).lower().strip("`")
+                table = match.group(2).lower().strip("`")
+                if schema in _BLOCKED_SCHEMAS:
+                    raise ValueError(f"Access to schema '{schema}' is not allowed")
+            else:
+                table = match.group(1).lower().strip("`")
+            if self.is_table_denied(table):
+                raise ValueError(f"Access to table '{table}' is denied")
+
+    # Read-only statement prefixes allowed through validation.
+    # "with" covers CTE queries (WITH ... AS (...) SELECT ...).
+    # "show" is handled separately via _validate_show_query to restrict subcommands.
+    _ALLOWED_STATEMENT_PREFIXES = ("select", "describe", "desc", "explain", "with")
+
+    # SHOW subcommands that are safe to execute.  Anything else (SHOW GRANTS,
+    # SHOW CREATE USER, SHOW VARIABLES, SHOW STATUS, ...) is blocked.
+    _ALLOWED_SHOW_RE = re.compile(r"^show\s+(databases|tables\b)", re.IGNORECASE)
+
+    # Extracts the schema name from "SHOW TABLES FROM <schema>".
+    _SHOW_TABLES_FROM_RE = re.compile(r"^show\s+tables\s+from\s+`?(\w+)`?", re.IGNORECASE)
+
+    def _validate_show_query(self, query_lower: str) -> None:
+        """Validate a SHOW statement against the safe subcommand allowlist.
+
+        Only SHOW DATABASES and SHOW TABLES [FROM <schema>] are permitted.
+        For SHOW TABLES FROM, the schema is checked against _BLOCKED_SCHEMAS.
+
+        Args:
+            query_lower: The lowercased, stripped query string.
+
+        Raises:
+            ValueError: If the SHOW variant or target schema is not allowed.
+        """
+        if not self._ALLOWED_SHOW_RE.match(query_lower):
+            raise ValueError("Only SHOW DATABASES and SHOW TABLES are allowed")
+        m = self._SHOW_TABLES_FROM_RE.match(query_lower)
+        if m:
+            schema = m.group(1).lower().strip("`")
+            if schema in _BLOCKED_SCHEMAS:
+                raise ValueError(f"Access to schema '{schema}' is not allowed")
+
+    def validate_sql_query(self, query: str) -> Tuple[bool, str]:
+        """Validate a SQL query for security.
+
+        Allows read-only statements (SELECT, SHOW DATABASES, SHOW TABLES,
+        DESCRIBE, EXPLAIN, WITH) and rejects everything else.  Also checks
+        for dangerous patterns, blocked schemas, and denied tables.
+
+        This method is called from db.execute_query() so that ALL queries --
+        whether from analytics tools or the generic execute_query tool -- go
+        through the same validation.
+        """
+        try:
             query_lower = query.lower().strip()
 
-            # Check if it's a SELECT query - ALLOW ALL SELECT QUERIES
-            if not query_lower.startswith("select"):
-                self.logger.info("Query doesn't start with SELECT - blocking query")
-                raise ValueError("Query doesn't start with SELECT - blocking query")
+            # SHOW is handled by its own validator with subcommand restrictions
+            if query_lower.startswith("show"):
+                self._validate_show_query(query_lower)
+            elif not any(query_lower.startswith(p) for p in self._ALLOWED_STATEMENT_PREFIXES):
+                self.logger.info("Query blocked - not a read-only statement")
+                raise ValueError("Only read-only statements are allowed (SELECT, SHOW, DESCRIBE)")
 
             # Check for balanced parentheses
             if query_lower.count("(") != query_lower.count(")"):
@@ -57,6 +258,9 @@ class KonfluxDevLakeSecurityManager:
             if len(query) > 10000:  # 10KB limit
                 self.logger.warning("SQL query too long")
                 raise ValueError("SQL query too long")
+
+            # Block queries that reference denied tables or non-lake schemas
+            self.extract_and_check_table_refs(query)
 
             return True, "Query validation passed"
 
@@ -237,37 +441,6 @@ class KonfluxDevLakeSecurityManager:
             "rate_limit_entries": len(self.rate_limits),
             "allowed_ips": len(self.allowed_ips),
         }
-
-
-class SQLInjectionDetector:
-    """SQL Injection Detection Utility - ALLOWS ALL SELECT QUERIES"""
-
-    def __init__(self):
-        self.logger = get_logger(f"{__name__}.SQLInjectionDetector")
-
-        # Common SQL injection patterns (excluding SELECT patterns)
-        self.injection_patterns = [
-            r"(\b(insert|update|delete|drop|create|alter|truncate|exec|xp_cmdshell|execute)\b)",
-        ]
-
-    def detect_sql_injection(self, query: str) -> Tuple[bool, List[str]]:
-        """Detect potential SQL injection in query"""
-        if not query:
-            return False, []
-
-        query_lower = query.lower().strip()
-        detected_patterns = []
-
-        for pattern in self.injection_patterns:
-            matches = re.findall(pattern, query_lower, re.IGNORECASE)
-            if matches:
-                detected_patterns.extend(matches)
-
-        if detected_patterns:
-            self.logger.warning(f"Potential SQL injection detected: {detected_patterns}")
-            return True, detected_patterns
-
-        return False, []
 
 
 class DataMasking:

@@ -104,7 +104,7 @@ class GitHubActionsTools(BaseTool):
             return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
 
     async def _execute_with_timeout(
-        self, query: str, limit: int, timeout: int = 60
+        self, query: str, limit: int, timeout: int = 60, params: tuple = None
     ) -> Dict[str, Any]:
         """
         Execute query with timeout.
@@ -113,13 +113,15 @@ class GitHubActionsTools(BaseTool):
             query: SQL query to execute
             limit: Maximum number of rows to return
             timeout: Timeout in seconds (default: 60)
+            params: Query parameters for parameterized queries
 
         Returns:
             Query result dictionary
         """
         try:
             return await asyncio.wait_for(
-                self.db_connection.execute_query(query, limit), timeout=timeout
+                self.db_connection.execute_query(query, limit, params=params),
+                timeout=timeout,
             )
         except asyncio.TimeoutError:
             self.logger.warning(f"Query timed out after {timeout}s")
@@ -149,13 +151,15 @@ class GitHubActionsTools(BaseTool):
             start_date = end_date - timedelta(days=days_back)
 
             # Step 1: Get repo github_ids for this project (fast query to avoid CONCAT in JOINs)
-            repo_ids_query = f"""
+            repo_ids_query = """
                 SELECT DISTINCT SUBSTRING_INDEX(pm.row_id, ':', -1) as github_id
                 FROM lake.project_mapping pm
-                WHERE pm.project_name = '{project_name}'
-                AND pm.row_id LIKE 'github:GithubRepo:1:%'
+                WHERE pm.project_name = %s
+                AND pm.row_id LIKE 'github:GithubRepo:1:%%'
             """
-            repo_ids_result = await self._execute_with_timeout(repo_ids_query, 500, timeout=30)
+            repo_ids_result = await self._execute_with_timeout(
+                repo_ids_query, 500, timeout=30, params=(project_name,)
+            )
 
             if not repo_ids_result.get("success") or not repo_ids_result.get("data"):
                 return {
@@ -178,7 +182,7 @@ class GitHubActionsTools(BaseTool):
                 }
 
             repo_ids = [str(r["github_id"]) for r in repo_ids_result["data"]]
-            repo_ids_str = ",".join(repo_ids)
+            repo_placeholders = ",".join(["%s"] * len(repo_ids))
 
             # Step 2: Build optimized queries using IN clause instead of JOIN + CONCAT
             # Query 1: Executive Summary
@@ -193,10 +197,11 @@ class GitHubActionsTools(BaseTool):
                         * 100.0 / NULLIF(COUNT(DISTINCT gj.id), 0), 1) as success_rate
                 FROM lake._tool_github_jobs gj
                 INNER JOIN lake._tool_github_runs gr ON gj.run_id = gr.id
-                WHERE gr.repo_id IN ({repo_ids_str})
-                AND gj.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE gr.repo_id IN ({repo_placeholders})
+                AND gj.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND gj.conclusion IN ('success', 'failure')
             """
+            summary_params = list(repo_ids) + [days_back]
 
             # Query 2: Repository Breakdown
             repo_query = f"""
@@ -212,12 +217,13 @@ class GitHubActionsTools(BaseTool):
                 FROM lake._tool_github_jobs gj
                 INNER JOIN lake._tool_github_runs gr ON gj.run_id = gr.id
                 INNER JOIN lake._tool_github_repos r ON gr.repo_id = r.github_id
-                WHERE gr.repo_id IN ({repo_ids_str})
-                AND gj.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE gr.repo_id IN ({repo_placeholders})
+                AND gj.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND gj.conclusion IN ('success', 'failure')
                 GROUP BY r.name
                 ORDER BY total_jobs DESC
             """
+            repo_params = list(repo_ids) + [days_back]
 
             # Query 3: Workflow Failures
             workflow_query = f"""
@@ -231,14 +237,15 @@ class GitHubActionsTools(BaseTool):
                         * 100.0 / NULLIF(COUNT(DISTINCT gr.id), 0), 1) as failure_rate
                 FROM lake._tool_github_runs gr
                 INNER JOIN lake._tool_github_repos r ON gr.repo_id = r.github_id
-                WHERE gr.repo_id IN ({repo_ids_str})
-                AND gr.created_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE gr.repo_id IN ({repo_placeholders})
+                AND gr.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND gr.conclusion IN ('success', 'failure')
                 GROUP BY r.name, gr.name
                 HAVING failures > 0
                 ORDER BY failures DESC
                 LIMIT 20
             """
+            workflow_params = list(repo_ids) + [days_back]
 
             # Query 4: Top Failing Jobs
             failing_jobs_query = f"""
@@ -264,14 +271,15 @@ class GitHubActionsTools(BaseTool):
                 FROM lake._tool_github_jobs gj
                 INNER JOIN lake._tool_github_runs gr ON gj.run_id = gr.id
                 INNER JOIN lake._tool_github_repos r ON gr.repo_id = r.github_id
-                WHERE gr.repo_id IN ({repo_ids_str})
-                AND gj.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE gr.repo_id IN ({repo_placeholders})
+                AND gj.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND gj.conclusion IN ('success', 'failure')
                 GROUP BY r.name, gj.name
                 HAVING failures > 0
                 ORDER BY failures DESC
                 LIMIT 20
             """
+            failing_jobs_params = list(repo_ids) + [days_back]
 
             # Query 5: Flaky Jobs (20-80% failure rate, minimum 5 runs)
             flaky_jobs_query = f"""
@@ -288,8 +296,8 @@ class GitHubActionsTools(BaseTool):
                 FROM lake._tool_github_jobs gj
                 INNER JOIN lake._tool_github_runs gr ON gj.run_id = gr.id
                 INNER JOIN lake._tool_github_repos r ON gr.repo_id = r.github_id
-                WHERE gr.repo_id IN ({repo_ids_str})
-                AND gj.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE gr.repo_id IN ({repo_placeholders})
+                AND gj.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND gj.conclusion IN ('success', 'failure')
                 GROUP BY r.name, gj.name
                 HAVING COUNT(DISTINCT gj.id) >= 5
@@ -298,6 +306,7 @@ class GitHubActionsTools(BaseTool):
                 ORDER BY failures DESC
                 LIMIT 30
             """
+            flaky_jobs_params = list(repo_ids) + [days_back]
 
             # Query 6: Daily Trend
             daily_trend_query = f"""
@@ -310,13 +319,14 @@ class GitHubActionsTools(BaseTool):
                         * 100.0 / NULLIF(COUNT(DISTINCT gj.id), 0), 1) as failure_rate
                 FROM lake._tool_github_jobs gj
                 INNER JOIN lake._tool_github_runs gr ON gj.run_id = gr.id
-                WHERE gr.repo_id IN ({repo_ids_str})
-                AND gj.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE gr.repo_id IN ({repo_placeholders})
+                AND gj.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND gj.conclusion IN ('success', 'failure')
                 GROUP BY DATE(gj.started_at)
                 ORDER BY date DESC
                 LIMIT 30
             """
+            daily_trend_params = list(repo_ids) + [days_back]
 
             # Query 7: Day of Week Analysis
             day_of_week_query = f"""
@@ -330,22 +340,35 @@ class GitHubActionsTools(BaseTool):
                         * 100.0 / NULLIF(COUNT(DISTINCT gj.id), 0), 1) as failure_rate
                 FROM lake._tool_github_jobs gj
                 INNER JOIN lake._tool_github_runs gr ON gj.run_id = gr.id
-                WHERE gr.repo_id IN ({repo_ids_str})
-                AND gj.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE gr.repo_id IN ({repo_placeholders})
+                AND gj.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND gj.conclusion IN ('success', 'failure')
                 GROUP BY DAYNAME(gj.started_at), DAYOFWEEK(gj.started_at)
                 ORDER BY day_number
             """
+            day_of_week_params = list(repo_ids) + [days_back]
 
             # Step 3: Run all queries in parallel with timeouts
             results = await asyncio.gather(
-                self._execute_with_timeout(summary_query, 1, timeout=60),
-                self._execute_with_timeout(repo_query, 100, timeout=60),
-                self._execute_with_timeout(workflow_query, 20, timeout=60),
-                self._execute_with_timeout(failing_jobs_query, 20, timeout=60),
-                self._execute_with_timeout(flaky_jobs_query, 30, timeout=60),
-                self._execute_with_timeout(daily_trend_query, 30, timeout=60),
-                self._execute_with_timeout(day_of_week_query, 7, timeout=60),
+                self._execute_with_timeout(
+                    summary_query, 1, timeout=60, params=tuple(summary_params)
+                ),
+                self._execute_with_timeout(repo_query, 100, timeout=60, params=tuple(repo_params)),
+                self._execute_with_timeout(
+                    workflow_query, 20, timeout=60, params=tuple(workflow_params)
+                ),
+                self._execute_with_timeout(
+                    failing_jobs_query, 20, timeout=60, params=tuple(failing_jobs_params)
+                ),
+                self._execute_with_timeout(
+                    flaky_jobs_query, 30, timeout=60, params=tuple(flaky_jobs_params)
+                ),
+                self._execute_with_timeout(
+                    daily_trend_query, 30, timeout=60, params=tuple(daily_trend_params)
+                ),
+                self._execute_with_timeout(
+                    day_of_week_query, 7, timeout=60, params=tuple(day_of_week_params)
+                ),
                 return_exceptions=True,
             )
 

@@ -125,7 +125,7 @@ class LeadTimeTools(BaseTool):
                 return {"success": False, "error": "project_name is required"}
 
             # Query 1: Average PR Cycle Time (Panel 1)
-            cycle_time_query = f"""
+            cycle_time_query = """
                 SELECT
                     ROUND(AVG(COALESCE(prm.pr_cycle_time / 60, 0)), 2) AS avg_cycle_time_hours,
                     COUNT(DISTINCT pr.id) AS pr_count
@@ -133,60 +133,60 @@ class LeadTimeTools(BaseTool):
                 LEFT JOIN lake.project_pr_metrics prm ON pr.id = prm.id
                 JOIN lake.project_mapping pm ON pr.base_repo_id = pm.row_id
                     AND pm.`table` = 'repos'
-                WHERE pm.project_name = '{project_name}'
-                    AND prm.pr_deployed_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE pm.project_name = %s
+                    AND prm.pr_deployed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """
 
             # Query 2: Average Coding Time (Panel 1.1)
-            coding_time_query = f"""
+            coding_time_query = """
                 SELECT
                     ROUND(AVG(COALESCE(prm.pr_coding_time / 60, 0)), 2) AS avg_coding_time_hours
                 FROM lake.pull_requests pr
                 LEFT JOIN lake.project_pr_metrics prm ON pr.id = prm.id
                 JOIN lake.project_mapping pm ON pr.base_repo_id = pm.row_id
                     AND pm.`table` = 'repos'
-                WHERE pm.project_name = '{project_name}'
-                    AND prm.pr_deployed_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE pm.project_name = %s
+                    AND prm.pr_deployed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """
 
             # Query 3: Average Pickup Time (Panel 1.2)
-            pickup_time_query = f"""
+            pickup_time_query = """
                 SELECT
                     ROUND(AVG(COALESCE(prm.pr_pickup_time / 60, 0)), 2) AS avg_pickup_time_hours
                 FROM lake.pull_requests pr
                 LEFT JOIN lake.project_pr_metrics prm ON pr.id = prm.id
                 JOIN lake.project_mapping pm ON pr.base_repo_id = pm.row_id
                     AND pm.`table` = 'repos'
-                WHERE pm.project_name = '{project_name}'
-                    AND prm.pr_deployed_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE pm.project_name = %s
+                    AND prm.pr_deployed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """
 
             # Query 4: Average Review Time (Panel 1.3)
-            review_time_query = f"""
+            review_time_query = """
                 SELECT
                     ROUND(AVG(COALESCE(prm.pr_review_time / 60, 0)), 2) AS avg_review_time_hours
                 FROM lake.pull_requests pr
                 LEFT JOIN lake.project_pr_metrics prm ON pr.id = prm.id
                 JOIN lake.project_mapping pm ON pr.base_repo_id = pm.row_id
                     AND pm.`table` = 'repos'
-                WHERE pm.project_name = '{project_name}'
-                    AND prm.pr_deployed_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE pm.project_name = %s
+                    AND prm.pr_deployed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """
 
             # Query 5: Average Deploy Time (Panel 1.4)
-            deploy_time_query = f"""
+            deploy_time_query = """
                 SELECT
                     ROUND(AVG(COALESCE(prm.pr_deploy_time / 60, 0)), 2) AS avg_deploy_time_hours
                 FROM lake.pull_requests pr
                 LEFT JOIN lake.project_pr_metrics prm ON pr.id = prm.id
                 JOIN lake.project_mapping pm ON pr.base_repo_id = pm.row_id
                     AND pm.`table` = 'repos'
-                WHERE pm.project_name = '{project_name}'
-                    AND prm.pr_deployed_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE pm.project_name = %s
+                    AND prm.pr_deployed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """
 
             # Query 6: PR Details (Panel 2)
-            details_query = f"""
+            details_query = """
                 SELECT DISTINCT
                     pr.title AS pr_title,
                     pr.url AS pr_url,
@@ -205,21 +205,22 @@ class LeadTimeTools(BaseTool):
                     AND pm.`table` = 'repos'
                 JOIN lake.cicd_deployment_commits cdc ON prm.deployment_commit_id = cdc.id
                 LEFT JOIN lake.pull_request_commits prc ON prc.commit_sha = prm.first_commit_sha
-                WHERE pm.project_name = '{project_name}'
+                WHERE pm.project_name = %s
                     AND pr.merged_date IS NOT NULL
                     AND prm.pr_cycle_time IS NOT NULL
-                    AND cdc.finished_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                    AND cdc.finished_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 ORDER BY cdc.finished_date DESC
             """
 
             # Execute all queries in parallel
+            query_params = (project_name, days_back)
             results = await asyncio.gather(
-                self.db_connection.execute_query(cycle_time_query, 1),
-                self.db_connection.execute_query(coding_time_query, 1),
-                self.db_connection.execute_query(pickup_time_query, 1),
-                self.db_connection.execute_query(review_time_query, 1),
-                self.db_connection.execute_query(deploy_time_query, 1),
-                self.db_connection.execute_query(details_query, limit),
+                self.db_connection.execute_query(cycle_time_query, 1, params=query_params),
+                self.db_connection.execute_query(coding_time_query, 1, params=query_params),
+                self.db_connection.execute_query(pickup_time_query, 1, params=query_params),
+                self.db_connection.execute_query(review_time_query, 1, params=query_params),
+                self.db_connection.execute_query(deploy_time_query, 1, params=query_params),
+                self.db_connection.execute_query(details_query, limit, params=query_params),
             )
 
             (

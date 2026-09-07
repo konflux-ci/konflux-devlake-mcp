@@ -131,7 +131,7 @@ class CodecovTools(BaseTool):
             return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
 
     async def _execute_with_timeout(
-        self, query: str, limit: int, timeout: int = 60
+        self, query: str, limit: int, timeout: int = 60, params: tuple = None
     ) -> Dict[str, Any]:
         """
         Execute query with timeout.
@@ -140,13 +140,15 @@ class CodecovTools(BaseTool):
             query: SQL query to execute
             limit: Maximum number of rows to return
             timeout: Timeout in seconds (default: 60)
+            params: Query parameters for parameterized queries
 
         Returns:
             Query result dictionary
         """
         try:
             return await asyncio.wait_for(
-                self.db_connection.execute_query(query, limit), timeout=timeout
+                self.db_connection.execute_query(query, limit, params=params),
+                timeout=timeout,
             )
         except asyncio.TimeoutError:
             self.logger.warning(f"Query timed out after {timeout}s")
@@ -266,13 +268,15 @@ class CodecovTools(BaseTool):
 
             # Step 1: Get repo names for this project
             # First try direct Codecov repo mapping
-            repo_ids_query = f"""
+            repo_ids_query = """
                 SELECT DISTINCT pm.row_id as repo_id
                 FROM lake.project_mapping pm
-                WHERE pm.project_name = '{project_name}'
+                WHERE pm.project_name = %s
                 AND pm.`table` = '_tool_codecov_repos'
             """
-            repo_ids_result = await self._execute_with_timeout(repo_ids_query, 500, timeout=30)
+            repo_ids_result = await self._execute_with_timeout(
+                repo_ids_query, 500, timeout=30, params=(project_name,)
+            )
 
             repo_ids = []
             if repo_ids_result.get("success") and repo_ids_result.get("data"):
@@ -280,14 +284,16 @@ class CodecovTools(BaseTool):
 
             # If no direct Codecov mapping, get repo names through repos table
             if not repo_ids:
-                repos_query = f"""
+                repos_query = """
                     SELECT DISTINCT r.name as repo_id
                     FROM lake.repos r
                     JOIN lake.project_mapping pm ON pm.row_id = r.id
-                    WHERE pm.project_name = '{project_name}'
+                    WHERE pm.project_name = %s
                     AND pm.`table` = 'repos'
                 """
-                repos_result = await self._execute_with_timeout(repos_query, 500, timeout=30)
+                repos_result = await self._execute_with_timeout(
+                    repos_query, 500, timeout=30, params=(project_name,)
+                )
                 if repos_result.get("success") and repos_result.get("data"):
                     repo_ids = [r["repo_id"] for r in repos_result["data"]]
 
@@ -312,7 +318,7 @@ class CodecovTools(BaseTool):
                     "recommendations": [],
                 }
 
-            repo_ids_str = ", ".join([f"'{r}'" for r in repo_ids])
+            repo_id_placeholders = ", ".join(["%s"] * len(repo_ids))
 
             # Step 2: Build all queries
             # Query 2: Latest Coverage Per Repository (with flags)
@@ -327,7 +333,7 @@ class CodecovTools(BaseTool):
                     c.misses as lines_uncovered,
                     c.commit_timestamp
                 FROM lake._tool_codecov_coverages c
-                WHERE c.repo_id IN ({repo_ids_str})
+                WHERE c.repo_id IN ({repo_id_placeholders})
                 AND c.coverage_percentage > 0
                 AND c.commit_timestamp = (
                     SELECT MAX(c2.commit_timestamp)
@@ -349,9 +355,9 @@ class CodecovTools(BaseTool):
                     t.lines_total,
                     t.lines_covered
                 FROM lake._tool_codecov_coverage_trends t
-                WHERE t.repo_id IN ({repo_ids_str})
+                WHERE t.repo_id IN ({repo_id_placeholders})
                 AND t.coverage_percentage > 0
-                AND t.date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                AND t.date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 ORDER BY t.date, t.repo_id
             """
 
@@ -361,10 +367,10 @@ class CodecovTools(BaseTool):
                     c.repo_id,
                     ROUND(AVG(c.coverage_percentage), 2) as start_coverage
                 FROM lake._tool_codecov_coverages c
-                WHERE c.repo_id IN ({repo_ids_str})
+                WHERE c.repo_id IN ({repo_id_placeholders})
                 AND c.coverage_percentage > 0
-                AND c.commit_timestamp >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
-                AND c.commit_timestamp <= DATE_SUB(NOW(), INTERVAL {days_back - 7} DAY)
+                AND c.commit_timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                AND c.commit_timestamp <= DATE_SUB(NOW(), INTERVAL %s DAY)
                 GROUP BY c.repo_id
             """
 
@@ -386,9 +392,9 @@ class CodecovTools(BaseTool):
                     ON comp.connection_id = cm.connection_id
                     AND comp.repo_id = cm.repo_id
                     AND comp.commit_sha = cm.commit_sha
-                WHERE comp.repo_id IN ({repo_ids_str})
+                WHERE comp.repo_id IN ({repo_id_placeholders})
                 AND comp.patch IS NOT NULL
-                AND cm.commit_timestamp >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                AND cm.commit_timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
                     GROUP BY comp.repo_id, comp.commit_sha
                 ) sub
                 GROUP BY repo_id
@@ -413,9 +419,9 @@ class CodecovTools(BaseTool):
                     ON comp.connection_id = cm.connection_id
                     AND comp.repo_id = cm.repo_id
                     AND comp.commit_sha = cm.commit_sha
-                WHERE comp.repo_id IN ({repo_ids_str})
+                WHERE comp.repo_id IN ({repo_id_placeholders})
                 AND comp.patch IS NOT NULL
-                AND cm.commit_timestamp >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                AND cm.commit_timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
                     GROUP BY comp.repo_id, comp.commit_sha
                 ) sub
                 WHERE rn = 1
@@ -438,9 +444,9 @@ class CodecovTools(BaseTool):
                     ON comp.connection_id = cm.connection_id
                     AND comp.repo_id = cm.repo_id
                     AND comp.commit_sha = cm.commit_sha
-                WHERE comp.repo_id IN ({repo_ids_str})
+                WHERE comp.repo_id IN ({repo_id_placeholders})
                 AND comp.patch IS NOT NULL
-                AND cm.commit_timestamp >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                AND cm.commit_timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
                     GROUP BY DATE(cm.commit_timestamp), comp.commit_sha
                 ) sub
                 GROUP BY date
@@ -456,7 +462,7 @@ class CodecovTools(BaseTool):
                     SUM(c.lines_total) as total_lines,
                     SUM(c.hits) as lines_covered
                 FROM lake._tool_codecov_coverages c
-                WHERE c.repo_id IN ({repo_ids_str})
+                WHERE c.repo_id IN ({repo_id_placeholders})
                 AND c.coverage_percentage > 0
                 AND c.flag_name IS NOT NULL AND c.flag_name != ''
                 AND c.commit_timestamp = (
@@ -471,14 +477,36 @@ class CodecovTools(BaseTool):
             """
 
             # Step 3: Run all queries in parallel
+            latest_cov_params = tuple(repo_ids)
+            daily_trend_params = tuple(repo_ids) + (days_back,)
+            start_cov_params = tuple(repo_ids) + (days_back, days_back - 7)
+            patch_cov_params = tuple(repo_ids) + (days_back,)
+            latest_patch_params = tuple(repo_ids) + (days_back,)
+            daily_patch_params = tuple(repo_ids) + (days_back,)
+            flag_cov_params = tuple(repo_ids)
+
             results = await asyncio.gather(
-                self._execute_with_timeout(latest_coverage_query, 500, timeout=60),
-                self._execute_with_timeout(daily_trend_query, 1000, timeout=60),
-                self._execute_with_timeout(start_coverage_query, 100, timeout=60),
-                self._execute_with_timeout(patch_coverage_query, 100, timeout=60),
-                self._execute_with_timeout(latest_patch_query, 100, timeout=60),
-                self._execute_with_timeout(daily_patch_query, 100, timeout=60),
-                self._execute_with_timeout(flag_coverage_query, 50, timeout=60),
+                self._execute_with_timeout(
+                    latest_coverage_query, 500, timeout=60, params=latest_cov_params
+                ),
+                self._execute_with_timeout(
+                    daily_trend_query, 1000, timeout=60, params=daily_trend_params
+                ),
+                self._execute_with_timeout(
+                    start_coverage_query, 100, timeout=60, params=start_cov_params
+                ),
+                self._execute_with_timeout(
+                    patch_coverage_query, 100, timeout=60, params=patch_cov_params
+                ),
+                self._execute_with_timeout(
+                    latest_patch_query, 100, timeout=60, params=latest_patch_params
+                ),
+                self._execute_with_timeout(
+                    daily_patch_query, 100, timeout=60, params=daily_patch_params
+                ),
+                self._execute_with_timeout(
+                    flag_coverage_query, 50, timeout=60, params=flag_cov_params
+                ),
                 return_exceptions=True,
             )
 
@@ -776,19 +804,21 @@ class CodecovTools(BaseTool):
             }
 
             # Get repository IDs for project
-            repo_query = f"""
+            repo_query = """
                 SELECT DISTINCT pm.row_id as repo_id
                 FROM lake.project_mapping pm
-                WHERE pm.project_name = '{project_name}'
+                WHERE pm.project_name = %s
                 AND pm.`table` = '_tool_codecov_repos'
             """
-            repo_result = await self._execute_with_timeout(repo_query, 500, timeout=30)
+            repo_result = await self._execute_with_timeout(
+                repo_query, 500, timeout=30, params=(project_name,)
+            )
 
             if not repo_result.get("success") or not repo_result.get("data"):
                 return empty_result
 
             repo_ids = [r["repo_id"] for r in repo_result["data"]]
-            repo_ids_str = ", ".join([f"'{r}'" for r in repo_ids])
+            repo_id_placeholders = ", ".join(["%s"] * len(repo_ids))
 
             # Get latest coverage per flag, then select highest lines_total per repo
             # Matches Query 2b from Grafana dashboard specification
@@ -812,7 +842,7 @@ class CodecovTools(BaseTool):
                             c.partials,
                             c.misses as lines_uncovered
                         FROM lake._tool_codecov_coverages c
-                        WHERE c.repo_id IN ({repo_ids_str})
+                        WHERE c.repo_id IN ({repo_id_placeholders})
                         AND c.coverage_percentage > 0
                         AND c.commit_timestamp = (
                             SELECT MAX(c2.commit_timestamp)
@@ -845,9 +875,9 @@ class CodecovTools(BaseTool):
                         ON comp.connection_id = cm.connection_id
                         AND comp.repo_id = cm.repo_id
                         AND comp.commit_sha = cm.commit_sha
-                    WHERE comp.repo_id IN ({repo_ids_str})
+                    WHERE comp.repo_id IN ({repo_id_placeholders})
                     AND comp.patch IS NOT NULL
-                    AND cm.commit_timestamp >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                    AND cm.commit_timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
                     GROUP BY comp.repo_id, comp.commit_sha
                 ) sub
                 WHERE rn = 1
@@ -859,18 +889,24 @@ class CodecovTools(BaseTool):
                     c.repo_id,
                     ROUND(AVG(c.coverage_percentage), 2) as start_coverage
                 FROM lake._tool_codecov_coverages c
-                WHERE c.repo_id IN ({repo_ids_str})
+                WHERE c.repo_id IN ({repo_id_placeholders})
                 AND c.coverage_percentage > 0
-                AND c.commit_timestamp >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
-                AND c.commit_timestamp <= DATE_SUB(NOW(), INTERVAL {max(days_back - 7, 1)} DAY)
+                AND c.commit_timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                AND c.commit_timestamp <= DATE_SUB(NOW(), INTERVAL %s DAY)
                 GROUP BY c.repo_id
             """
 
             # Execute queries in parallel
+            latest_cov_params = tuple(repo_ids)
+            patch_params = tuple(repo_ids) + (days_back,)
+            start_params = tuple(repo_ids) + (days_back, max(days_back - 7, 1))
+
             cov_result, patch_result, start_result = await asyncio.gather(
-                self._execute_with_timeout(latest_coverage_query, 500, timeout=60),
-                self._execute_with_timeout(patch_query, 100, timeout=60),
-                self._execute_with_timeout(start_query, 100, timeout=30),
+                self._execute_with_timeout(
+                    latest_coverage_query, 500, timeout=60, params=latest_cov_params
+                ),
+                self._execute_with_timeout(patch_query, 100, timeout=60, params=patch_params),
+                self._execute_with_timeout(start_query, 100, timeout=30, params=start_params),
             )
 
             if not cov_result.get("success") or not cov_result.get("data"):

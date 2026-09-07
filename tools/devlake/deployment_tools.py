@@ -242,16 +242,19 @@ class DeploymentTools(BaseTool):
 
             # Build WHERE conditions for the CTE
             where_conditions = []
+            params = []
 
             # Always exclude github_pages deployments (not production)
-            where_conditions.append("cdc.cicd_deployment_id NOT LIKE '%github_pages%'")
-            where_conditions.append("cdc.display_title NOT LIKE '%github_pages%'")
+            where_conditions.append("cdc.cicd_deployment_id NOT LIKE '%%github_pages%%'")
+            where_conditions.append("cdc.display_title NOT LIKE '%%github_pages%%'")
 
             if project:
-                where_conditions.append(f"pm.project_name IN ('{project}')")
+                where_conditions.append("pm.project_name = %s")
+                params.append(project)
             else:
                 # Default to Konflux_Pilot_Team if no project specified
-                where_conditions.append("pm.project_name IN ('Konflux_Pilot_Team')")
+                where_conditions.append("pm.project_name = %s")
+                params.append("Konflux_Pilot_Team")
 
             where_conditions.append("environment = 'PRODUCTION'")
 
@@ -262,18 +265,21 @@ class DeploymentTools(BaseTool):
                     # If start_date doesn't have time, assume 00:00:00
                     if len(start_date) == 10:  # YYYY-MM-DD format
                         start_date = f"{start_date} 00:00:00"
-                    where_conditions.append(f"finished_date >= '{start_date}'")
+                    where_conditions.append("finished_date >= %s")
+                    params.append(start_date)
 
                 if end_date:
                     # If end_date doesn't have time, assume 23:59:59 to capture full day
                     if len(end_date) == 10:  # YYYY-MM-DD format
                         end_date = f"{end_date} 23:59:59"
-                    where_conditions.append(f"finished_date <= '{end_date}'")
+                    where_conditions.append("finished_date <= %s")
+                    params.append(end_date)
             elif days_back > 0:
                 # Fall back to days_back filtering
                 start_date_calc = datetime.now() - timedelta(days=days_back)
                 start_date_str = start_date_calc.strftime("%Y-%m-%d %H:%M:%S")
-                where_conditions.append(f"finished_date >= '{start_date_str}'")
+                where_conditions.append("finished_date >= %s")
+                params.append(start_date_str)
 
             # Add WHERE conditions to the CTE
             if where_conditions:
@@ -297,7 +303,8 @@ class DeploymentTools(BaseTool):
             """
 
             # Add limit
-            base_query += f" LIMIT {limit}"
+            base_query += " LIMIT %s"
+            params.append(limit)
 
             self.logger.info(
                 f"Getting deployments with filters: project={project}, "
@@ -306,7 +313,7 @@ class DeploymentTools(BaseTool):
                 f"date_field={date_field}, limit={limit}"
             )
 
-            result = await self.db_connection.execute_query(base_query, limit)
+            result = await self.db_connection.execute_query(base_query, limit, params=tuple(params))
 
             if result["success"]:
                 return {
@@ -376,15 +383,19 @@ class DeploymentTools(BaseTool):
                 LEFT JOIN lake.project_mapping pm
                     ON cdc.cicd_scope_id = pm.row_id
                     AND pm.`table` = 'cicd_scopes'
-                WHERE cdc.cicd_deployment_id NOT LIKE '%github_pages%'
-                    AND cdc.display_title NOT LIKE '%github_pages%'
+                WHERE cdc.cicd_deployment_id NOT LIKE '%%github_pages%%'
+                    AND cdc.display_title NOT LIKE '%%github_pages%%'
                     AND environment = 'PRODUCTION'
                     AND result = 'SUCCESS'
             """
 
-            query += f" AND pm.project_name IN ('{project}')"
-            query += f" AND finished_date >= '{start_date_str}'"
-            query += f" AND finished_date <= '{end_date_str}'"
+            params = []
+            query += " AND pm.project_name = %s"
+            params.append(project)
+            query += " AND finished_date >= %s"
+            params.append(start_date_str)
+            query += " AND finished_date <= %s"
+            params.append(end_date_str)
 
             query += """
             ),
@@ -412,7 +423,7 @@ class DeploymentTools(BaseTool):
                 f"start={start_date_str}, end={end_date_str}"
             )
 
-            result = await self.db_connection.execute_query(query, 1000)
+            result = await self.db_connection.execute_query(query, 1000, params=tuple(params))
 
             if not result["success"]:
                 return {"success": False, "error": result["error"]}

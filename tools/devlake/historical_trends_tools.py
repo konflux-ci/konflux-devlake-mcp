@@ -235,7 +235,7 @@ class HistoricalTrendsTools(BaseTool):
 
     async def _get_cycle_time_trend(self, project_name: str, days: int) -> Dict[str, Any]:
         """Get PR cycle time weekly trend."""
-        query = f"""
+        query = """
             SELECT
                 YEARWEEK(pr.merged_date, 1) AS week,
                 MIN(pr.merged_date) AS week_start,
@@ -245,20 +245,20 @@ class HistoricalTrendsTools(BaseTool):
             JOIN lake.project_pr_metrics prm ON pr.id = prm.id
             JOIN lake.repos r ON pr.base_repo_id = r.id
             JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
-            WHERE pm.project_name = '{project_name}'
-                AND pr.merged_date >= DATE_SUB(NOW(), INTERVAL {days} DAY)
+            WHERE pm.project_name = %s
+                AND pr.merged_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND pr.merged_date IS NOT NULL
                 AND prm.pr_cycle_time IS NOT NULL
             GROUP BY YEARWEEK(pr.merged_date, 1)
             ORDER BY week DESC
             LIMIT 8
         """
-        result = await self.db_connection.execute_query(query, 8)
+        result = await self.db_connection.execute_query(query, 8, params=(project_name, days))
         return self._process_trend_data(result, "avg_cycle_time_hours", "hours", "cycle_time")
 
     async def _get_merge_rate_trend(self, project_name: str, days: int) -> Dict[str, Any]:
         """Get PR merge rate weekly trend."""
-        query = f"""
+        query = """
             SELECT
                 YEARWEEK(pr.created_date, 1) AS week,
                 MIN(pr.created_date) AS week_start,
@@ -269,18 +269,18 @@ class HistoricalTrendsTools(BaseTool):
             FROM lake.pull_requests pr
             JOIN lake.repos r ON pr.base_repo_id = r.id
             JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
-            WHERE pm.project_name = '{project_name}'
-                AND pr.created_date >= DATE_SUB(NOW(), INTERVAL {days} DAY)
+            WHERE pm.project_name = %s
+                AND pr.created_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
             GROUP BY YEARWEEK(pr.created_date, 1)
             ORDER BY week DESC
             LIMIT 8
         """
-        result = await self.db_connection.execute_query(query, 8)
+        result = await self.db_connection.execute_query(query, 8, params=(project_name, days))
         return self._process_trend_data(result, "merge_rate", "percent", "merge_rate")
 
     async def _get_retests_trend(self, project_name: str, days: int) -> Dict[str, Any]:
         """Get retests per PR weekly trend."""
-        query = f"""
+        query = """
             SELECT
                 YEARWEEK(prc.created_date, 1) AS week,
                 MIN(prc.created_date) AS week_start,
@@ -293,19 +293,19 @@ class HistoricalTrendsTools(BaseTool):
             FROM lake.pull_request_comments prc
             JOIN lake.repos r ON prc.repo_id = r.id
             JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
-            WHERE pm.project_name = '{project_name}'
-                AND (prc.body LIKE '%/retest%' OR prc.body LIKE '%/rerun%')
-                AND prc.created_date >= DATE_SUB(NOW(), INTERVAL {days} DAY)
+            WHERE pm.project_name = %s
+                AND (prc.body LIKE '%%/retest%%' OR prc.body LIKE '%%/rerun%%')
+                AND prc.created_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
             GROUP BY YEARWEEK(prc.created_date, 1)
             ORDER BY week DESC
             LIMIT 8
         """
-        result = await self.db_connection.execute_query(query, 8)
+        result = await self.db_connection.execute_query(query, 8, params=(project_name, days))
         return self._process_trend_data(result, "retests_per_pr", "count", "retests_per_pr")
 
     async def _get_ci_success_trend(self, project_name: str, days: int) -> Dict[str, Any]:
         """Get CI success rate weekly trend."""
-        query = f"""
+        query = """
             SELECT
                 YEARWEEK(gr.run_started_at, 1) AS week,
                 MIN(gr.run_started_at) AS week_start,
@@ -319,14 +319,14 @@ class HistoricalTrendsTools(BaseTool):
             JOIN lake.project_mapping pm
                 ON CONCAT('github:GithubRepo:1:', repo.github_id) = pm.row_id
                 AND pm.`table` = 'repos'
-            WHERE pm.project_name = '{project_name}'
-                AND gr.run_started_at >= DATE_SUB(NOW(), INTERVAL {days} DAY)
+            WHERE pm.project_name = %s
+                AND gr.run_started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND gr.conclusion IN ('success', 'failure')
             GROUP BY YEARWEEK(gr.run_started_at, 1)
             ORDER BY week DESC
             LIMIT 8
         """
-        result = await self.db_connection.execute_query(query, 8)
+        result = await self.db_connection.execute_query(query, 8, params=(project_name, days))
         return self._process_trend_data(result, "success_rate", "percent", "ci_success_rate")
 
     async def _get_coverage_trend(self, project_name: str, days: int) -> Dict[str, Any]:
@@ -342,7 +342,7 @@ class HistoricalTrendsTools(BaseTool):
                 "trend_4_weeks": [],
             }
 
-        repo_names_str = ", ".join([f"'{r}'" for r in repo_names])
+        repo_placeholders = ", ".join(["%s"] * len(repo_names))
 
         query = f"""
             SELECT
@@ -355,19 +355,19 @@ class HistoricalTrendsTools(BaseTool):
                 ON c.connection_id = cm.connection_id
                 AND c.repo_id = cm.repo_id
                 AND c.commit_sha = cm.commit_sha
-            WHERE c.repo_id IN ({repo_names_str})
-                AND cm.commit_timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
+            WHERE c.repo_id IN ({repo_placeholders})
+                AND cm.commit_timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND c.totals_coverage IS NOT NULL
             GROUP BY YEARWEEK(cm.commit_timestamp, 1)
             ORDER BY week DESC
             LIMIT 8
         """
-        result = await self.db_connection.execute_query(query, 8)
+        result = await self.db_connection.execute_query(query, 8, params=tuple(repo_names + [days]))
         return self._process_trend_data(result, "avg_coverage", "percent", "coverage")
 
     async def _get_mttr_trend(self, project_name: str, days: int) -> Dict[str, Any]:
         """Get MTTR (Mean Time to Restore) weekly trend."""
-        query = f"""
+        query = """
             SELECT
                 YEARWEEK(i.resolution_date, 1) AS week,
                 MIN(i.resolution_date) AS week_start,
@@ -376,33 +376,33 @@ class HistoricalTrendsTools(BaseTool):
             FROM lake.incidents i
             JOIN lake.project_mapping pm ON i.scope_id = pm.row_id
                 AND pm.`table` = i.`table`
-            WHERE pm.project_name = '{project_name}'
-                AND i.resolution_date >= DATE_SUB(NOW(), INTERVAL {days} DAY)
+            WHERE pm.project_name = %s
+                AND i.resolution_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND i.resolution_date IS NOT NULL
                 AND i.lead_time_minutes IS NOT NULL
             GROUP BY YEARWEEK(i.resolution_date, 1)
             ORDER BY week DESC
             LIMIT 8
         """
-        result = await self.db_connection.execute_query(query, 8)
+        result = await self.db_connection.execute_query(query, 8, params=(project_name, days))
         return self._process_trend_data(result, "avg_mttr_hours", "hours", "mttr")
 
     async def _get_repo_names(self, project_name: str) -> List[str]:
         """Get repository names for a project."""
-        query = f"""
+        query = """
             SELECT DISTINCT r.name AS repo_name
             FROM lake.repos r
             JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
-            WHERE pm.project_name = '{project_name}'
+            WHERE pm.project_name = %s
         """
-        result = await self.db_connection.execute_query(query, 100)
+        result = await self.db_connection.execute_query(query, 100, params=(project_name,))
         if result["success"] and result["data"]:
             return [row["repo_name"] for row in result["data"]]
         return []
 
     async def _get_weekly_breakdown(self, project_name: str, days: int) -> List[Dict[str, Any]]:
         """Get weekly breakdown summary."""
-        query = f"""
+        query = """
             SELECT
                 YEARWEEK(pr.merged_date, 1) AS week,
                 MIN(DATE(pr.merged_date)) AS week_start,
@@ -413,14 +413,14 @@ class HistoricalTrendsTools(BaseTool):
             JOIN lake.project_pr_metrics prm ON pr.id = prm.id
             JOIN lake.repos r ON pr.base_repo_id = r.id
             JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
-            WHERE pm.project_name = '{project_name}'
-                AND pr.merged_date >= DATE_SUB(NOW(), INTERVAL {days} DAY)
+            WHERE pm.project_name = %s
+                AND pr.merged_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND pr.merged_date IS NOT NULL
             GROUP BY YEARWEEK(pr.merged_date, 1)
             ORDER BY week DESC
             LIMIT 8
         """
-        result = await self.db_connection.execute_query(query, 8)
+        result = await self.db_connection.execute_query(query, 8, params=(project_name, days))
         if result["success"] and result["data"]:
             breakdown = []
             for row in result["data"]:

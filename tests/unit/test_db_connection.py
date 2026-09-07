@@ -320,6 +320,70 @@ class TestKonfluxDevLakeConnection:
         assert result["data"] == [{"id": 1, "name": "test"}]
 
     @pytest.mark.asyncio
+    async def test_execute_query_with_params(self, connection):
+        """Test executing a query with parameterized values."""
+        mock_cursor = AsyncMock()
+        mock_cursor.execute = AsyncMock()
+        mock_cursor.fetchall = AsyncMock(return_value=[{"id": 1, "name": "test"}])
+        mock_cursor.__aenter__ = AsyncMock(return_value=mock_cursor)
+        mock_cursor.__aexit__ = AsyncMock(return_value=None)
+
+        mock_conn = AsyncMock()
+        mock_conn.cursor = MagicMock(return_value=mock_cursor)
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=None)
+
+        mock_pool = MagicMock()
+        mock_pool.closed = False
+        mock_pool.size = 5
+        mock_pool.freesize = 5
+        mock_pool.minsize = 2
+        mock_pool.maxsize = 10
+        mock_pool.acquire = MagicMock(return_value=mock_conn)
+        connection._pool = mock_pool
+
+        params = ("Konflux_Pilot_Team", 30)
+        result = await connection.execute_query(
+            "SELECT * FROM lake.incidents WHERE project = %s AND days_back = %s",
+            limit=100,
+            params=params,
+        )
+
+        assert result["success"] is True
+        mock_cursor.execute.assert_called_once_with(
+            "SELECT * FROM lake.incidents WHERE project = %s AND days_back = %s",
+            ("Konflux_Pilot_Team", 30),
+        )
+
+    @pytest.mark.asyncio
+    async def test_execute_query_params_none_backward_compat(self, connection):
+        """Test that params=None maintains backward compatibility."""
+        mock_cursor = AsyncMock()
+        mock_cursor.execute = AsyncMock()
+        mock_cursor.fetchall = AsyncMock(return_value=[{"id": 1}])
+        mock_cursor.__aenter__ = AsyncMock(return_value=mock_cursor)
+        mock_cursor.__aexit__ = AsyncMock(return_value=None)
+
+        mock_conn = AsyncMock()
+        mock_conn.cursor = MagicMock(return_value=mock_cursor)
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=None)
+
+        mock_pool = MagicMock()
+        mock_pool.closed = False
+        mock_pool.size = 5
+        mock_pool.freesize = 5
+        mock_pool.minsize = 2
+        mock_pool.maxsize = 10
+        mock_pool.acquire = MagicMock(return_value=mock_conn)
+        connection._pool = mock_pool
+
+        result = await connection.execute_query("SELECT 1")
+
+        assert result["success"] is True
+        mock_cursor.execute.assert_called_once_with("SELECT 1", None)
+
+    @pytest.mark.asyncio
     async def test_execute_query_with_limit(self, connection):
         """Test executing a query with result limit."""
         mock_cursor = AsyncMock()
@@ -486,3 +550,73 @@ class TestKonfluxDevLakeConnection:
         )
         call_kwargs = mock_create.call_args[1]
         assert call_kwargs["ssl"] is mock_ctx_instance
+
+
+@pytest.mark.unit
+class TestExecuteQuerySecurityValidation:
+    """Test that execute_query validates all queries through the security manager."""
+
+    @pytest.fixture
+    def db_config(self):
+        return {
+            "host": "localhost",
+            "port": 3306,
+            "user": "test",
+            "password": "test",
+            "database": "lake",
+        }
+
+    @pytest.mark.asyncio
+    async def test_blocks_denied_table(self, db_config):
+        """Test that queries against denied tables are blocked at the db layer."""
+        from utils.security import KonfluxDevLakeSecurityManager
+
+        sec_mgr = KonfluxDevLakeSecurityManager(MagicMock())
+        connection = KonfluxDevLakeConnection(db_config, security_manager=sec_mgr)
+        result = await connection.execute_query("SELECT * FROM lake._devlake_api_keys")
+        assert result["success"] is False
+        assert "_devlake_api_keys" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_blocks_forbidden_schema(self, db_config):
+        """Test that queries against blocked schemas are blocked at the db layer."""
+        from utils.security import KonfluxDevLakeSecurityManager
+
+        sec_mgr = KonfluxDevLakeSecurityManager(MagicMock())
+        connection = KonfluxDevLakeConnection(db_config, security_manager=sec_mgr)
+        result = await connection.execute_query("SELECT user FROM mysql.user")
+        assert result["success"] is False
+        assert "mysql" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_blocks_non_select(self, db_config):
+        """Test that non-read-only statements are blocked at the db layer."""
+        from utils.security import KonfluxDevLakeSecurityManager
+
+        sec_mgr = KonfluxDevLakeSecurityManager(MagicMock())
+        connection = KonfluxDevLakeConnection(db_config, security_manager=sec_mgr)
+        result = await connection.execute_query("DROP TABLE lake.incidents")
+        assert result["success"] is False
+        assert "read-only" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_allows_select_with_security_manager(self, db_config):
+        """Test that valid SELECT queries pass security validation."""
+        from utils.security import KonfluxDevLakeSecurityManager
+
+        sec_mgr = KonfluxDevLakeSecurityManager(MagicMock())
+        connection = KonfluxDevLakeConnection(db_config, security_manager=sec_mgr)
+        # Will fail at pool level (no real DB) but should pass security validation
+        result = await connection.execute_query("SELECT * FROM lake.incidents")
+        # If it got past security, the error will be about the pool, not security
+        assert "_devlake" not in result.get("error", "")
+        assert "mysql" not in result.get("error", "")
+
+    @pytest.mark.asyncio
+    async def test_no_security_manager_skips_validation(self, db_config):
+        """Test that queries pass through without a security manager (backward compat)."""
+        connection = KonfluxDevLakeConnection(db_config)
+        # Will fail at pool level but should NOT fail at security validation
+        result = await connection.execute_query("DROP TABLE lake.incidents")
+        # Error should be about pool/connection, not security
+        assert "read-only" not in result.get("error", "")

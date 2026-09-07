@@ -154,7 +154,7 @@ class PRCycleTimeTools(BaseTool):
             return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
 
     async def _execute_with_timeout(
-        self, query: str, limit: int, timeout: int = 60
+        self, query: str, limit: int, timeout: int = 60, params: tuple = None
     ) -> Dict[str, Any]:
         """
         Execute query with timeout.
@@ -163,13 +163,15 @@ class PRCycleTimeTools(BaseTool):
             query: SQL query to execute
             limit: Maximum number of rows to return
             timeout: Timeout in seconds (default: 60)
+            params: Query parameters for parameterized queries
 
         Returns:
             Query result dictionary
         """
         try:
             return await asyncio.wait_for(
-                self.db_connection.execute_query(query, limit), timeout=timeout
+                self.db_connection.execute_query(query, limit, params=params),
+                timeout=timeout,
             )
         except asyncio.TimeoutError:
             self.logger.warning(f"Query timed out after {timeout}s")
@@ -200,25 +202,32 @@ class PRCycleTimeTools(BaseTool):
 
             # Build date filter based on merged_date (matching Grafana)
             date_filter = ""
+            date_filter_params = []
             if start_date or end_date:
                 if start_date:
                     if len(start_date) == 10:
                         start_date = f"{start_date} 00:00:00"
-                    date_filter += f" AND pr.merged_date >= '{start_date}'"
+                    date_filter += " AND pr.merged_date >= %s"
+                    date_filter_params.append(start_date)
                 if end_date:
                     if len(end_date) == 10:
                         end_date = f"{end_date} 23:59:59"
-                    date_filter += f" AND pr.merged_date <= '{end_date}'"
+                    date_filter += " AND pr.merged_date <= %s"
+                    date_filter_params.append(end_date)
             elif days_back is not None and days_back > 0:
-                date_filter = f" AND pr.merged_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)"
+                date_filter = " AND pr.merged_date >= DATE_SUB(NOW(), INTERVAL %s DAY)"
+                date_filter_params.append(days_back)
             else:
                 days_back = 30
-                date_filter = f" AND pr.merged_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)"
+                date_filter = " AND pr.merged_date >= DATE_SUB(NOW(), INTERVAL %s DAY)"
+                date_filter_params.append(days_back)
 
             # Build repo filter
             repo_filter = ""
+            repo_filter_params = []
             if repo_name:
-                repo_filter = f" AND r.name LIKE '%{repo_name}%'"
+                repo_filter = " AND r.name LIKE %s"
+                repo_filter_params.append(f"%{repo_name}%")
 
             # Query 1: Overall Cycle Time (matching Grafana dashboard)
             overall_query = f"""
@@ -233,11 +242,12 @@ class PRCycleTimeTools(BaseTool):
                 JOIN lake.repos r ON pr.base_repo_id = r.id
                 JOIN lake.project_mapping pm ON r.id = pm.row_id
                     AND pm.`table` = 'repos'
-                WHERE pm.project_name = '{project_name}'
+                WHERE pm.project_name = %s
                     AND pr.merged_date IS NOT NULL
                     {date_filter}
                     {repo_filter}
             """
+            overall_params = [project_name] + date_filter_params + repo_filter_params
 
             # Query 2: Weekly Trends for analysis period
             weekly_query = f"""
@@ -254,13 +264,14 @@ class PRCycleTimeTools(BaseTool):
                 JOIN lake.repos r ON pr.base_repo_id = r.id
                 JOIN lake.project_mapping pm ON r.id = pm.row_id
                     AND pm.`table` = 'repos'
-                WHERE pm.project_name = '{project_name}'
+                WHERE pm.project_name = %s
                     AND pr.merged_date IS NOT NULL
                     {date_filter}
                     {repo_filter}
                 GROUP BY YEARWEEK(pr.merged_date, 1)
                 ORDER BY week DESC
             """
+            weekly_params = [project_name] + date_filter_params + repo_filter_params
 
             # Query 3: 3-Month Trend (ALWAYS included)
             three_month_trend_query = f"""
@@ -277,13 +288,14 @@ class PRCycleTimeTools(BaseTool):
                 JOIN lake.repos r ON pr.base_repo_id = r.id
                 JOIN lake.project_mapping pm ON r.id = pm.row_id
                     AND pm.`table` = 'repos'
-                WHERE pm.project_name = '{project_name}'
+                WHERE pm.project_name = %s
                     AND pr.merged_date IS NOT NULL
                     AND pr.merged_date >= DATE_SUB(NOW(), INTERVAL 90 DAY)
                     {repo_filter}
                 GROUP BY YEARWEEK(pr.merged_date, 1)
                 ORDER BY week DESC
             """
+            three_month_params = [project_name] + repo_filter_params
 
             # Query 4: Repository Breakdown
             repo_query = f"""
@@ -300,14 +312,15 @@ class PRCycleTimeTools(BaseTool):
                 JOIN lake.repos r ON pr.base_repo_id = r.id
                 JOIN lake.project_mapping pm ON r.id = pm.row_id
                     AND pm.`table` = 'repos'
-                WHERE pm.project_name = '{project_name}'
+                WHERE pm.project_name = %s
                     AND pr.merged_date IS NOT NULL
                     {date_filter}
                     {repo_filter}
                 GROUP BY r.name, repo_url
                 ORDER BY merged_pr_count DESC
-                LIMIT {top_repos}
+                LIMIT %s
             """
+            repo_params = [project_name] + date_filter_params + repo_filter_params + [top_repos]
 
             # Query 5: PR Size Analysis
             size_query = f"""
@@ -332,7 +345,7 @@ class PRCycleTimeTools(BaseTool):
                 JOIN lake.repos r ON pr.base_repo_id = r.id
                 JOIN lake.project_mapping pm ON r.id = pm.row_id
                     AND pm.`table` = 'repos'
-                WHERE pm.project_name = '{project_name}'
+                WHERE pm.project_name = %s
                     AND pr.merged_date IS NOT NULL
                     {date_filter}
                     {repo_filter}
@@ -346,18 +359,33 @@ class PRCycleTimeTools(BaseTool):
                         ELSE 5
                     END
             """
+            size_params = [project_name] + date_filter_params + repo_filter_params
 
             # Execute queries in parallel
             queries = [
-                self._execute_with_timeout(overall_query, 1, timeout=60),
-                self._execute_with_timeout(weekly_query, 52, timeout=60),
-                self._execute_with_timeout(three_month_trend_query, 13, timeout=60),
+                self._execute_with_timeout(
+                    overall_query, 1, timeout=60, params=tuple(overall_params)
+                ),
+                self._execute_with_timeout(
+                    weekly_query, 52, timeout=60, params=tuple(weekly_params)
+                ),
+                self._execute_with_timeout(
+                    three_month_trend_query, 13, timeout=60, params=tuple(three_month_params)
+                ),
             ]
 
             if include_repo_breakdown:
-                queries.append(self._execute_with_timeout(repo_query, top_repos, timeout=60))
+                queries.append(
+                    self._execute_with_timeout(
+                        repo_query, top_repos, timeout=60, params=tuple(repo_params)
+                    )
+                )
             if include_size_analysis:
-                queries.append(self._execute_with_timeout(size_query, 10, timeout=60))
+                queries.append(
+                    self._execute_with_timeout(
+                        size_query, 10, timeout=60, params=tuple(size_params)
+                    )
+                )
 
             results = await asyncio.gather(*queries, return_exceptions=True)
 

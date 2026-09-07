@@ -124,7 +124,7 @@ class E2ETestTools(BaseTool):
             return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
 
     async def _execute_with_timeout(
-        self, query: str, limit: int, timeout: int = 60
+        self, query: str, limit: int, timeout: int = 60, params: tuple = None
     ) -> Dict[str, Any]:
         """
         Execute query with timeout.
@@ -133,13 +133,14 @@ class E2ETestTools(BaseTool):
             query: SQL query to execute
             limit: Maximum number of rows to return
             timeout: Timeout in seconds (default: 60)
+            params: Query parameters for %s placeholders
 
         Returns:
             Query result dictionary
         """
         try:
             return await asyncio.wait_for(
-                self.db_connection.execute_query(query, limit), timeout=timeout
+                self.db_connection.execute_query(query, limit, params=params), timeout=timeout
             )
         except asyncio.TimeoutError:
             self.logger.warning(f"Query timed out after {timeout}s")
@@ -160,7 +161,7 @@ class E2ETestTools(BaseTool):
         """
         # Get repo names from project_mapping via _tool_github_repos
         # Note: COLLATE needed due to MySQL collation mismatch between tables
-        query = f"""
+        query = """
             SELECT DISTINCT
                 SUBSTRING_INDEX(r.name, '/', -1) as repo_name,
                 r.name as full_name
@@ -168,10 +169,10 @@ class E2ETestTools(BaseTool):
             INNER JOIN lake._tool_github_repos r
                 ON SUBSTRING_INDEX(pm.row_id, ':', -1) COLLATE utf8mb4_general_ci
                    = CAST(r.github_id AS CHAR) COLLATE utf8mb4_general_ci
-            WHERE pm.project_name = '{project_name}'
-            AND pm.row_id LIKE 'github:GithubRepo:%'
+            WHERE pm.project_name = %s
+            AND pm.row_id LIKE 'github:GithubRepo:%%'
         """
-        result = await self._execute_with_timeout(query, 500, timeout=30)
+        result = await self._execute_with_timeout(query, 500, timeout=30, params=(project_name,))
 
         if result.get("success") and result.get("data"):
             # Return short repo names (matching ci_test_jobs.repository format)
@@ -240,29 +241,32 @@ class E2ETestTools(BaseTool):
             # Step 2: Build repository filter
             # Filter by team repos AND optional repo_name pattern
             repo_filter = ""
+            repo_filter_params = []
             if target_repos:
-                # Escape single quotes and build IN clause
-                escaped_repos = [r.replace("'", "''") for r in target_repos]
-                repo_names_sql = "', '".join(escaped_repos)
-                repo_filter = f" AND j.repository IN ('{repo_names_sql}')"
-
-                # If repo_name is also specified, further filter
+                placeholders = ", ".join(["%s"] * len(target_repos))
+                repo_filter = f" AND j.repository IN ({placeholders})"
+                repo_filter_params = list(target_repos)
                 if repo_name:
-                    repo_filter += f" AND j.repository LIKE '%{repo_name}%'"
+                    repo_filter += " AND j.repository LIKE %s"
+                    repo_filter_params.append(f"%{repo_name}%")
             elif repo_name:
-                # No project_name, just filter by repo_name pattern
-                repo_filter = f" AND j.repository LIKE '%{repo_name}%'"
+                repo_filter = " AND j.repository LIKE %s"
+                repo_filter_params = [f"%{repo_name}%"]
 
             # Build test filter for E2E tests only
+            # Literal %% needed because queries use parameterized %s placeholders
             test_filter = ""
             if not include_all_tests:
                 test_filter = """
                     AND (
-                        LOWER(j.job_name) LIKE '%e2e%'
-                        OR LOWER(j.job_name) LIKE '%integration%'
-                        OR LOWER(j.job_name) LIKE '%test%'
+                        LOWER(j.job_name) LIKE '%%e2e%%'
+                        OR LOWER(j.job_name) LIKE '%%integration%%'
+                        OR LOWER(j.job_name) LIKE '%%test%%'
                     )
                 """
+
+            # Shared params for all queries: days_back + repo filter values
+            query_params = [days_back] + repo_filter_params
 
             # Query 1: Job-level summary (Prow/Tekton jobs)
             job_summary_query = f"""
@@ -276,7 +280,7 @@ class E2ETestTools(BaseTool):
                     COUNT(DISTINCT j.job_name) as unique_job_types,
                     COUNT(DISTINCT j.repository) as unique_repos
                 FROM lake.ci_test_jobs j
-                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND j.result IN ('SUCCESS', 'FAILURE', 'ABORTED')
                 {repo_filter}
                 {test_filter}
@@ -300,7 +304,7 @@ class E2ETestTools(BaseTool):
                 FROM lake.ci_test_cases tc
                 INNER JOIN lake.ci_test_jobs j
                     ON tc.connection_id = j.connection_id AND tc.job_id = j.job_id
-                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 {repo_filter}
                 {test_filter}
             """
@@ -319,7 +323,7 @@ class E2ETestTools(BaseTool):
                     ROUND(AVG(j.duration_sec), 1) as avg_duration_sec,
                     MAX(j.started_at) as last_run
                 FROM lake.ci_test_jobs j
-                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND j.result IN ('SUCCESS', 'FAILURE', 'ABORTED')
                 {repo_filter}
                 {test_filter}
@@ -344,7 +348,7 @@ class E2ETestTools(BaseTool):
                 FROM lake.ci_test_cases tc
                 INNER JOIN lake.ci_test_jobs j
                     ON tc.connection_id = j.connection_id AND tc.job_id = j.job_id
-                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND tc.status IN ('passed', 'failed')
                 {repo_filter}
                 {test_filter}
@@ -368,7 +372,7 @@ class E2ETestTools(BaseTool):
                 FROM lake.ci_test_cases tc
                 INNER JOIN lake.ci_test_jobs j
                     ON tc.connection_id = j.connection_id AND tc.job_id = j.job_id
-                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND tc.status IN ('passed', 'failed')
                 {repo_filter}
                 {test_filter}
@@ -392,7 +396,7 @@ class E2ETestTools(BaseTool):
                     ROUND(COUNT(DISTINCT CASE WHEN j.result = 'SUCCESS' THEN j.job_id END)
                         * 100.0 / NULLIF(COUNT(DISTINCT j.job_id), 0), 1) as pass_rate
                 FROM lake.ci_test_jobs j
-                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND j.result IN ('SUCCESS', 'FAILURE', 'ABORTED')
                 {repo_filter}
                 {test_filter}
@@ -411,7 +415,7 @@ class E2ETestTools(BaseTool):
                     ROUND(COUNT(DISTINCT CASE WHEN j.result = 'SUCCESS' THEN j.job_id END)
                         * 100.0 / NULLIF(COUNT(DISTINCT j.job_id), 0), 1) as pass_rate
                 FROM lake.ci_test_jobs j
-                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND j.result IN ('SUCCESS', 'FAILURE', 'ABORTED')
                 {repo_filter}
                 {test_filter}
@@ -431,7 +435,7 @@ class E2ETestTools(BaseTool):
                     ROUND(COUNT(DISTINCT CASE WHEN j.result = 'SUCCESS' THEN j.job_id END)
                         * 100.0 / NULLIF(COUNT(DISTINCT j.job_id), 0), 1) as pass_rate
                 FROM lake.ci_test_jobs j
-                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 AND j.result IN ('SUCCESS', 'FAILURE', 'ABORTED')
                 {repo_filter}
                 {test_filter}
@@ -454,7 +458,7 @@ class E2ETestTools(BaseTool):
                 FROM lake.ci_test_suites ts
                 INNER JOIN lake.ci_test_jobs j
                     ON ts.connection_id = j.connection_id AND ts.job_id = j.job_id
-                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE j.started_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 {repo_filter}
                 {test_filter}
                 GROUP BY j.job_name, j.repository, ts.name
@@ -463,16 +467,27 @@ class E2ETestTools(BaseTool):
             """
 
             # Execute all queries in parallel
+            params_tuple = tuple(query_params)
             results = await asyncio.gather(
-                self._execute_with_timeout(job_summary_query, 1, timeout=60),
-                self._execute_with_timeout(test_case_summary_query, 1, timeout=60),
-                self._execute_with_timeout(job_breakdown_query, 50, timeout=60),
-                self._execute_with_timeout(failing_tests_query, 30, timeout=60),
-                self._execute_with_timeout(flaky_tests_query, 30, timeout=60),
-                self._execute_with_timeout(repo_breakdown_query, 50, timeout=60),
-                self._execute_with_timeout(daily_trend_query, 30, timeout=60),
-                self._execute_with_timeout(weekly_trend_query, 12, timeout=60),
-                self._execute_with_timeout(suite_summary_query, 30, timeout=60),
+                self._execute_with_timeout(job_summary_query, 1, timeout=60, params=params_tuple),
+                self._execute_with_timeout(
+                    test_case_summary_query, 1, timeout=60, params=params_tuple
+                ),
+                self._execute_with_timeout(
+                    job_breakdown_query, 50, timeout=60, params=params_tuple
+                ),
+                self._execute_with_timeout(
+                    failing_tests_query, 30, timeout=60, params=params_tuple
+                ),
+                self._execute_with_timeout(flaky_tests_query, 30, timeout=60, params=params_tuple),
+                self._execute_with_timeout(
+                    repo_breakdown_query, 50, timeout=60, params=params_tuple
+                ),
+                self._execute_with_timeout(daily_trend_query, 30, timeout=60, params=params_tuple),
+                self._execute_with_timeout(weekly_trend_query, 12, timeout=60, params=params_tuple),
+                self._execute_with_timeout(
+                    suite_summary_query, 30, timeout=60, params=params_tuple
+                ),
                 return_exceptions=True,
             )
 
