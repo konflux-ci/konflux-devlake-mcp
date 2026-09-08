@@ -7,7 +7,7 @@ This module contains utility functions for database operations and configuration
 from utils.db import KonfluxDevLakeConnection
 from utils.config import KonfluxDevLakeConfig
 from utils.logger import get_logger, log_system_info, shutdown_logging, LoggerMixin
-from utils.security import KonfluxDevLakeSecurityManager, SQLInjectionDetector, DataMasking
+from utils.security import KonfluxDevLakeSecurityManager, DataMasking
 
 __all__ = [
     "KonfluxDevLakeConnection",
@@ -17,6 +17,5 @@ __all__ = [
     "shutdown_logging",
     "LoggerMixin",
     "KonfluxDevLakeSecurityManager",
-    "SQLInjectionDetector",
     "DataMasking",
 ]

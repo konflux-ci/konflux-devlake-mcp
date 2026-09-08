@@ -42,14 +42,16 @@ class ServerFactory:
         """
         self.logger.info("Creating MCP server with configuration")
 
-        # Create database connection
-        db_connection = KonfluxDevLakeConnection(config.get_database_config())
+        # Create security manager (before db_connection so queries are validated)
+        security_manager = KonfluxDevLakeSecurityManager(config)
+
+        # Create database connection with security validation
+        db_connection = KonfluxDevLakeConnection(
+            config.get_database_config(), security_manager=security_manager
+        )
 
         # Create tools manager
         tools_manager = KonfluxDevLakeToolsManager(db_connection)
-
-        # Create security manager
-        security_manager = KonfluxDevLakeSecurityManager(config)
 
         # Create and return the MCP server
         server = KonfluxDevLakeMCPServer(

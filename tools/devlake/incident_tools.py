@@ -162,7 +162,7 @@ class IncidentTools(BaseTool):
                 return {"success": False, "error": "project_name is required"}
 
             # Query 1: Median Time to Restore Service (Panel 1)
-            median_query = f"""
+            median_query = """
                 WITH _incidents AS (
                     SELECT
                         DISTINCT i.id,
@@ -170,8 +170,8 @@ class IncidentTools(BaseTool):
                     FROM lake.incidents i
                     JOIN lake.project_mapping pm ON i.scope_id = pm.row_id
                         AND pm.`table` = i.`table`
-                    WHERE pm.project_name = '{project_name}'
-                        AND i.resolution_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                    WHERE pm.project_name = %s
+                        AND i.resolution_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 ),
                 _median_mttr_ranks AS (
                     SELECT
@@ -189,24 +189,29 @@ class IncidentTools(BaseTool):
                 SELECT median_time_to_resolve / 60 AS median_time_to_resolve_in_hours
                 FROM _median_mttr
             """
+            median_params = [project_name, days_back]
 
             # Query 2: Incident Count (Panel 2)
-            count_query = f"""
+            count_query = """
                 SELECT COUNT(DISTINCT i.id) AS incident_count
                 FROM lake.incidents i
                 JOIN lake.project_mapping pm ON i.scope_id = pm.row_id
                     AND pm.`table` = i.`table`
-                WHERE pm.project_name = '{project_name}'
-                    AND i.created_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE pm.project_name = %s
+                    AND i.created_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """
+            count_params = [project_name, days_back]
 
             # Query 3: Incident Details (Panel 3)
             # Build additional WHERE conditions
             extra_conditions = ""
+            extra_params = []
             if status:
-                extra_conditions += f" AND i.status = '{status}'"
+                extra_conditions += " AND i.status = %s"
+                extra_params.append(status)
             if component:
-                extra_conditions += f" AND i.component = '{component}'"
+                extra_conditions += " AND i.component = %s"
+                extra_params.append(component)
 
             details_query = f"""
                 SELECT DISTINCT
@@ -218,17 +223,20 @@ class IncidentTools(BaseTool):
                 FROM lake.incidents i
                 JOIN lake.project_mapping pm ON i.scope_id = pm.row_id
                     AND pm.`table` = i.`table`
-                WHERE pm.project_name = '{project_name}'
-                    AND i.resolution_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE pm.project_name = %s
+                    AND i.resolution_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                     {extra_conditions}
                 ORDER BY i.resolution_date DESC
             """
+            details_params = [project_name, days_back] + extra_params
 
             # Execute queries in parallel
             median_result, count_result, details_result = await asyncio.gather(
-                self.db_connection.execute_query(median_query, 1),
-                self.db_connection.execute_query(count_query, 1),
-                self.db_connection.execute_query(details_query, limit),
+                self.db_connection.execute_query(median_query, 1, params=tuple(median_params)),
+                self.db_connection.execute_query(count_query, 1, params=tuple(count_params)),
+                self.db_connection.execute_query(
+                    details_query, limit, params=tuple(details_params)
+                ),
             )
 
             # Extract median MTTR
@@ -284,7 +292,7 @@ class IncidentTools(BaseTool):
                 return {"success": False, "error": "project_name is required"}
 
             # Query 1: Median Recovery Time (aligned with Grafana dashboard)
-            median_query = f"""
+            median_query = """
                 WITH _deployments AS (
                     SELECT
                         cdc.cicd_deployment_id AS deployment_id,
@@ -292,11 +300,11 @@ class IncidentTools(BaseTool):
                     FROM lake.cicd_deployment_commits cdc
                     JOIN lake.project_mapping pm ON cdc.cicd_scope_id = pm.row_id
                         AND pm.`table` = 'cicd_scopes'
-                    WHERE pm.project_name = '{project_name}'
+                    WHERE pm.project_name = %s
                         AND cdc.result = 'SUCCESS'
                         AND cdc.environment = 'PRODUCTION'
                     GROUP BY cdc.cicd_deployment_id
-                    HAVING MAX(cdc.finished_date) >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                    HAVING MAX(cdc.finished_date) >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 ),
                 _incidents_for_deployments AS (
                     SELECT
@@ -308,7 +316,7 @@ class IncidentTools(BaseTool):
                     FROM lake.incidents i
                     LEFT JOIN lake.project_incident_deployment_relationships pim ON i.id = pim.id
                     JOIN _deployments fd ON pim.deployment_id = fd.deployment_id
-                    WHERE i.resolution_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                    WHERE i.resolution_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 ),
                 _recovery_time_ranks AS (
                     SELECT
@@ -330,9 +338,10 @@ class IncidentTools(BaseTool):
                 FROM _recovery_time_ranks
                 WHERE ranks <= 0.5
             """
+            median_params = [project_name, days_back, days_back]
 
             # Query 2: Incident count caused by deployments
-            count_query = f"""
+            count_query = """
                 WITH _deployments AS (
                     SELECT
                         cdc.cicd_deployment_id AS deployment_id,
@@ -340,11 +349,11 @@ class IncidentTools(BaseTool):
                     FROM lake.cicd_deployment_commits cdc
                     JOIN lake.project_mapping pm ON cdc.cicd_scope_id = pm.row_id
                         AND pm.`table` = 'cicd_scopes'
-                    WHERE pm.project_name = '{project_name}'
+                    WHERE pm.project_name = %s
                         AND cdc.result = 'SUCCESS'
                         AND cdc.environment = 'PRODUCTION'
                     GROUP BY cdc.cicd_deployment_id
-                    HAVING MAX(cdc.finished_date) >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                    HAVING MAX(cdc.finished_date) >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 ),
                 _incidents_for_deployments AS (
                     SELECT
@@ -352,14 +361,15 @@ class IncidentTools(BaseTool):
                     FROM lake.incidents i
                     LEFT JOIN lake.project_incident_deployment_relationships pim ON i.id = pim.id
                     JOIN _deployments fd ON pim.deployment_id = fd.deployment_id
-                    WHERE i.resolution_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                    WHERE i.resolution_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 )
                 SELECT COUNT(DISTINCT incident_id) AS total_incidents
                 FROM _incidents_for_deployments
             """
+            count_params = [project_name, days_back, days_back]
 
             # Query 3: Deployment and incident details (matches Grafana Panel 3)
-            details_query = f"""
+            details_query = """
                 WITH _deployments AS (
                     SELECT
                         cdc.cicd_deployment_id AS deployment_id,
@@ -367,11 +377,11 @@ class IncidentTools(BaseTool):
                     FROM lake.cicd_deployment_commits cdc
                     JOIN lake.project_mapping pm ON cdc.cicd_scope_id = pm.row_id
                         AND pm.`table` = 'cicd_scopes'
-                    WHERE pm.project_name = '{project_name}'
+                    WHERE pm.project_name = %s
                         AND cdc.result = 'SUCCESS'
                         AND cdc.environment = 'PRODUCTION'
                     GROUP BY cdc.cicd_deployment_id
-                    HAVING MAX(cdc.finished_date) >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                    HAVING MAX(cdc.finished_date) >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 )
                 SELECT
                     fd.deployment_id,
@@ -386,15 +396,16 @@ class IncidentTools(BaseTool):
                 LEFT JOIN lake.project_incident_deployment_relationships pim ON i.id = pim.id
                 JOIN _deployments fd ON pim.deployment_id = fd.deployment_id
                 WHERE i.resolution_date IS NOT NULL
-                    AND i.resolution_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                    AND i.resolution_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 ORDER BY fd.deployment_finished_date DESC
             """
+            details_params = [project_name, days_back, days_back]
 
             # Execute queries in parallel
             median_result, count_result, details_result = await asyncio.gather(
-                self.db_connection.execute_query(median_query, 1),
-                self.db_connection.execute_query(count_query, 1),
-                self.db_connection.execute_query(details_query, 100),
+                self.db_connection.execute_query(median_query, 1, params=tuple(median_params)),
+                self.db_connection.execute_query(count_query, 1, params=tuple(count_params)),
+                self.db_connection.execute_query(details_query, 100, params=tuple(details_params)),
             )
 
             # Extract median recovery time

@@ -10,82 +10,451 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
-from utils.security import KonfluxDevLakeSecurityManager, SQLInjectionDetector, DataMasking
+from utils.security import (
+    KonfluxDevLakeSecurityManager,
+    DataMasking,
+)
+
+
+@pytest.fixture
+def sec_mgr() -> KonfluxDevLakeSecurityManager:
+    """Create a KonfluxDevLakeSecurityManager for validator tests."""
+    config = Mock()
+    config.allowed_ips = []
+    config.api_keys = {}
+    return KonfluxDevLakeSecurityManager(config)
 
 
 @pytest.mark.unit
 @pytest.mark.security
-class TestSQLInjectionDetector:
-    """Test suite for SQLInjectionDetector class."""
+class TestValidateIdentifier:
+    """Test suite for validate_identifier method."""
+
+    def test_valid_identifiers(self, sec_mgr):
+        """Test that legitimate project/repo names pass validation."""
+        valid_names = [
+            "Konflux_Pilot_Team",
+            "Secureflow - Konflux - Global",
+            "Secureflow - Konflux - Integration Team",
+            "Secureflow - Konflux - Build Team",
+            "integration-service",
+            "build-service",
+            "my_repo/sub-path",
+            "simple",
+        ]
+        for name in valid_names:
+            assert sec_mgr.validate_identifier(name) == name
+
+    def test_rejects_sql_injection_payloads(self, sec_mgr):
+        """Test that SQL injection payloads are rejected."""
+        malicious = [
+            "x') UNION SELECT user,authentication_string,host FROM mysql.user -- ",
+            "x'; DROP TABLE incidents; --",
+            "x\\'; DROP TABLE--",
+            "x`; SELECT * FROM mysql.user",
+            "x /* comment */ OR 1=1",
+            "x */ UNION SELECT 1",
+        ]
+        for payload in malicious:
+            with pytest.raises(ValueError):
+                sec_mgr.validate_identifier(payload)
+
+    def test_allows_names_with_apostrophes_and_quotes(self, sec_mgr):
+        """Test that legitimate names with apostrophes/quotes are allowed.
+
+        These are safe because identifier values are bound as parameters.
+        """
+        allowed = [
+            "O'Reilly",
+            'Team "Alpha"',
+            "repo`name",
+            "project\\path",
+        ]
+        for name in allowed:
+            assert sec_mgr.validate_identifier(name) == name
+
+    def test_rejects_empty_string(self, sec_mgr):
+        """Test that empty string is rejected."""
+        with pytest.raises(ValueError, match="must be 1-256 characters"):
+            sec_mgr.validate_identifier("")
+
+    def test_rejects_none(self, sec_mgr):
+        """Test that None is rejected."""
+        with pytest.raises(ValueError, match="must be 1-256 characters"):
+            sec_mgr.validate_identifier(None)
+
+    def test_rejects_too_long(self, sec_mgr):
+        """Test that overly long strings are rejected."""
+        with pytest.raises(ValueError, match="must be 1-256 characters"):
+            sec_mgr.validate_identifier("a" * 257)
+
+    def test_custom_field_name_in_error(self, sec_mgr):
+        """Test that custom field_name appears in error message."""
+        with pytest.raises(ValueError, match="Invalid project_name"):
+            sec_mgr.validate_identifier("test; DROP TABLE--", "project_name")
+
+
+@pytest.mark.unit
+@pytest.mark.security
+class TestValidateDateString:
+    """Test suite for validate_date_string method."""
+
+    def test_valid_dates(self, sec_mgr):
+        """Test that valid date formats pass."""
+        assert sec_mgr.validate_date_string("2024-01-15") == "2024-01-15"
+        assert sec_mgr.validate_date_string("2024-01-15 10:30:00") == "2024-01-15 10:30:00"
+        assert sec_mgr.validate_date_string("2024-12-31") == "2024-12-31"
+
+    def test_rejects_invalid_format(self, sec_mgr):
+        """Test that invalid formats are rejected."""
+        with pytest.raises(ValueError):
+            sec_mgr.validate_date_string("01/15/2024")
+        with pytest.raises(ValueError):
+            sec_mgr.validate_date_string("2024-1-5")
+        with pytest.raises(ValueError):
+            sec_mgr.validate_date_string("not-a-date")
+
+    def test_rejects_invalid_date(self, sec_mgr):
+        """Test that impossible dates are rejected."""
+        with pytest.raises(ValueError, match="not a valid date"):
+            sec_mgr.validate_date_string("2024-02-30")
+        with pytest.raises(ValueError, match="not a valid date"):
+            sec_mgr.validate_date_string("2024-13-01")
+
+    def test_rejects_injection_in_date(self, sec_mgr):
+        """Test that injection payloads in date fields are rejected."""
+        with pytest.raises(ValueError):
+            sec_mgr.validate_date_string("2024-01-01' OR '1'='1")
+
+
+@pytest.mark.unit
+@pytest.mark.security
+class TestValidatePositiveInt:
+    """Test suite for validate_positive_int method."""
+
+    def test_valid_integers(self, sec_mgr):
+        """Test that valid integers pass."""
+        assert sec_mgr.validate_positive_int(30) == 30
+        assert sec_mgr.validate_positive_int(0) == 0
+        assert sec_mgr.validate_positive_int("100") == 100
+
+    def test_rejects_negative(self, sec_mgr):
+        """Test that negative values are rejected."""
+        with pytest.raises(ValueError, match="must be non-negative"):
+            sec_mgr.validate_positive_int(-1)
+
+    def test_rejects_non_numeric(self, sec_mgr):
+        """Test that non-numeric values are rejected."""
+        with pytest.raises(ValueError, match="must be a positive integer"):
+            sec_mgr.validate_positive_int("abc")
+        with pytest.raises(ValueError, match="must be a positive integer"):
+            sec_mgr.validate_positive_int(None)
+
+    def test_custom_field_name_in_error(self, sec_mgr):
+        """Test that custom field_name appears in error message."""
+        with pytest.raises(ValueError, match="Invalid days_back"):
+            sec_mgr.validate_positive_int("bad", "days_back")
+
+
+@pytest.mark.unit
+@pytest.mark.security
+class TestIsTableDenied:
+    """Test suite for is_table_denied method."""
+
+    def test_explicit_deny_tables(self, sec_mgr):
+        """Test that explicitly denied tables are blocked."""
+        assert sec_mgr.is_table_denied("_devlake_api_keys") is True
+        assert sec_mgr.is_table_denied("auth_sessions") is True
+
+    def test_connection_tables_denied(self, sec_mgr):
+        """Test that all *_connections tables are blocked."""
+        connection_tables = [
+            "_tool_github_connections",
+            "_tool_jira_connections",
+            "_tool_gitlab_connections",
+            "_tool_codecov_connections",
+            "_tool_slack_connections",
+            "_tool_pagerduty_connections",
+            "_tool_jenkins_connections",
+            "_tool_bitbucket_connections",
+            "_devlake_blueprint_connections",
+        ]
+        for table in connection_tables:
+            assert sec_mgr.is_table_denied(table) is True, f"{table} should be denied"
+
+    def test_raw_tables_denied(self, sec_mgr):
+        """Test that all _raw_* tables are blocked."""
+        raw_tables = [
+            "_raw_github_api_pull_requests",
+            "_raw_jira_api_issues",
+            "_raw_gitlab_api_merge_requests",
+            "_raw_codecov_api_commits",
+            "_raw_pagerduty_incidents",
+            "_raw_cicd_test_jobs",
+        ]
+        for table in raw_tables:
+            assert sec_mgr.is_table_denied(table) is True, f"{table} should be denied"
+
+    def test_allowed_domain_tables(self, sec_mgr):
+        """Test that normalized domain model tables are allowed."""
+        allowed_tables = [
+            "incidents",
+            "pull_requests",
+            "repos",
+            "cicd_deployments",
+            "cicd_deployment_commits",
+            "project_mapping",
+            "project_pr_metrics",
+            "pull_request_comments",
+            "accounts",
+            "issues",
+            "commits",
+        ]
+        for table in allowed_tables:
+            assert sec_mgr.is_table_denied(table) is False, f"{table} should be allowed"
+
+    def test_allowed_tool_tables_used_by_analytics(self, sec_mgr):
+        """Test that _tool_* tables used by current analytics are allowed."""
+        tool_tables = [
+            "_tool_github_repos",
+            "_tool_github_runs",
+            "_tool_github_jobs",
+            "_tool_jira_issues",
+            "_tool_jira_board_issues",
+            "_tool_codecov_coverages",
+            "_tool_codecov_comparisons",
+            "_tool_codecov_commits",
+        ]
+        for table in tool_tables:
+            assert sec_mgr.is_table_denied(table) is False, f"{table} should be allowed (for now)"
+
+    def test_handles_backtick_quoting(self, sec_mgr):
+        """Test that backtick-quoted table names are handled."""
+        assert sec_mgr.is_table_denied("`_devlake_api_keys`") is True
+        assert sec_mgr.is_table_denied("`_raw_github_api_pull_requests`") is True
+        assert sec_mgr.is_table_denied("`incidents`") is False
+
+    def test_case_insensitive(self, sec_mgr):
+        """Test that check is case-insensitive."""
+        assert sec_mgr.is_table_denied("_DEVLAKE_API_KEYS") is True
+        assert sec_mgr.is_table_denied("_Raw_GitHub_Api_Issues") is True
+        assert sec_mgr.is_table_denied("_Tool_GitHub_CONNECTIONS") is True
+
+    def test_admin_only_tables_allowed_by_default(self, sec_mgr):
+        """Test that _devlake_* and _tool_* tables are allowed with default is_admin=True."""
+        admin_only_tables = [
+            "_devlake_blueprints",
+            "_devlake_pipelines",
+            "_devlake_tasks",
+            "_tool_github_repos",
+            "_tool_jira_issues",
+            "_tool_codecov_coverages",
+        ]
+        for table in admin_only_tables:
+            assert (
+                sec_mgr.is_table_denied(table) is False
+            ), f"{table} should be allowed (is_admin=True)"
+
+    def test_admin_only_tables_denied_for_non_admin(self, sec_mgr):
+        """Test that _devlake_* and _tool_* tables are denied when is_admin=False."""
+        # TODO(RBAC): This path activates once the default is flipped to False.
+        admin_only_tables = [
+            "_devlake_blueprints",
+            "_devlake_pipelines",
+            "_devlake_tasks",
+            "_devlake_migration_history",
+            "_devlake_subtasks",
+            "_tool_github_repos",
+            "_tool_jira_issues",
+            "_tool_gitlab_projects",
+            "_tool_codecov_coverages",
+            "_tool_copilot_seats",
+        ]
+        for table in admin_only_tables:
+            assert (
+                sec_mgr.is_table_denied(table, is_admin=False) is True
+            ), f"{table} should be denied for non-admin"
+
+    def test_deny_tier_blocked_regardless_of_role(self, sec_mgr):
+        """Test that DENY tier tables are blocked even for admins."""
+        deny_tables = [
+            "_devlake_api_keys",
+            "auth_sessions",
+            "_tool_github_connections",
+            "_raw_github_api_pull_requests",
+        ]
+        for table in deny_tables:
+            assert sec_mgr.is_table_denied(table, is_admin=True) is True
+            assert sec_mgr.is_table_denied(table, is_admin=False) is True
+
+    def test_allow_tier_accessible_regardless_of_role(self, sec_mgr):
+        """Test that ALLOW tier tables are accessible for all roles."""
+        allow_tables = ["incidents", "pull_requests", "repos", "project_mapping"]
+        for table in allow_tables:
+            assert sec_mgr.is_table_denied(table, is_admin=True) is False
+            assert sec_mgr.is_table_denied(table, is_admin=False) is False
+
+
+@pytest.mark.unit
+@pytest.mark.security
+class TestExtractAndCheckTableRefs:
+    """Test suite for extract_and_check_table_refs and schema blocking."""
+
+    def test_allows_normal_lake_queries(self, sec_mgr):
+        """Test that normal queries against lake tables pass."""
+        queries = [
+            "SELECT * FROM lake.incidents",
+            "SELECT * FROM lake.pull_requests pr JOIN lake.repos r ON pr.base_repo_id = r.id",
+            "SELECT * FROM lake.cicd_deployment_commits cdc "
+            "LEFT JOIN lake.project_mapping pm ON cdc.cicd_scope_id = pm.row_id",
+        ]
+        for query in queries:
+            sec_mgr.extract_and_check_table_refs(query)  # should not raise
+
+    def test_blocks_mysql_schema(self, sec_mgr):
+        """Test that queries referencing mysql schema are blocked."""
+        with pytest.raises(ValueError, match="Access to schema 'mysql' is not allowed"):
+            sec_mgr.extract_and_check_table_refs("SELECT user FROM mysql.user")
+
+    def test_blocks_information_schema(self, sec_mgr):
+        """Test that queries referencing information_schema are blocked."""
+        with pytest.raises(
+            ValueError, match="Access to schema 'information_schema' is not allowed"
+        ):
+            sec_mgr.extract_and_check_table_refs("SELECT * FROM information_schema.tables")
+
+    def test_blocks_performance_schema(self, sec_mgr):
+        """Test that queries referencing performance_schema are blocked."""
+        with pytest.raises(
+            ValueError, match="Access to schema 'performance_schema' is not allowed"
+        ):
+            sec_mgr.extract_and_check_table_refs(
+                "SELECT * FROM performance_schema.events_statements_summary_by_digest"
+            )
+
+    def test_blocks_sys_schema(self, sec_mgr):
+        """Test that queries referencing sys schema are blocked."""
+        with pytest.raises(ValueError, match="Access to schema 'sys' is not allowed"):
+            sec_mgr.extract_and_check_table_refs("SELECT * FROM sys.version")
+
+    def test_blocks_denied_table_with_schema(self, sec_mgr):
+        """Test that denied tables are caught even with lake. prefix."""
+        with pytest.raises(ValueError, match="Access to table '_devlake_api_keys' is denied"):
+            sec_mgr.extract_and_check_table_refs("SELECT * FROM lake._devlake_api_keys")
+
+    def test_blocks_denied_table_without_schema(self, sec_mgr):
+        """Test that denied tables are caught without schema prefix."""
+        with pytest.raises(ValueError, match="denied"):
+            sec_mgr.extract_and_check_table_refs("SELECT * FROM _raw_github_api_pull_requests")
+
+    def test_blocks_denied_table_in_join(self, sec_mgr):
+        """Test that denied tables in JOIN clauses are caught."""
+        with pytest.raises(ValueError, match="denied"):
+            sec_mgr.extract_and_check_table_refs(
+                "SELECT * FROM lake.incidents i "
+                "JOIN lake._tool_github_connections c ON i.id = c.id"
+            )
+
+    def test_blocks_comma_separated_blocked_schema(self, sec_mgr):
+        """Test that blocked schemas in comma-separated FROM lists are caught."""
+        with pytest.raises(ValueError, match="Access to schema 'mysql' is not allowed"):
+            sec_mgr.extract_and_check_table_refs(
+                "SELECT u.user FROM lake.incidents i, mysql.user u"
+            )
+
+    def test_blocks_comma_separated_denied_table(self, sec_mgr):
+        """Test that denied tables in comma-separated FROM lists are caught."""
+        with pytest.raises(ValueError, match="denied"):
+            sec_mgr.extract_and_check_table_refs(
+                "SELECT * FROM lake.incidents i, lake._devlake_api_keys k"
+            )
+
+    def test_blocks_describe_blocked_schema(self, sec_mgr):
+        """Test that DESCRIBE against blocked schemas is caught."""
+        with pytest.raises(ValueError, match="Access to schema 'mysql' is not allowed"):
+            sec_mgr.extract_and_check_table_refs("DESCRIBE mysql.user")
+
+    def test_blocks_desc_blocked_schema(self, sec_mgr):
+        """Test that DESC against blocked schemas is caught."""
+        with pytest.raises(
+            ValueError, match="Access to schema 'information_schema' is not allowed"
+        ):
+            sec_mgr.extract_and_check_table_refs("DESC information_schema.tables")
+
+    def test_blocks_describe_denied_table(self, sec_mgr):
+        """Test that DESCRIBE against denied tables is caught."""
+        with pytest.raises(ValueError, match="denied"):
+            sec_mgr.extract_and_check_table_refs("DESCRIBE lake._devlake_api_keys")
+
+    def test_blocks_describe_denied_table_bare(self, sec_mgr):
+        """Test that DESCRIBE against denied tables without schema prefix is caught."""
+        with pytest.raises(ValueError, match="denied"):
+            sec_mgr.extract_and_check_table_refs("DESCRIBE _raw_github_api_issues")
+
+    def test_allows_describe_normal_table(self, sec_mgr):
+        """Test that DESCRIBE against allowed tables passes."""
+        sec_mgr.extract_and_check_table_refs("DESCRIBE lake.incidents")  # should not raise
+
+    def test_blocks_union_select_from_denied_table(self, sec_mgr):
+        """Test that UNION SELECT from denied tables in subqueries is caught."""
+        with pytest.raises(ValueError, match="Access to schema 'mysql' is not allowed"):
+            sec_mgr.extract_and_check_table_refs(
+                "SELECT * FROM lake.incidents "
+                "UNION SELECT user,host,authentication_string FROM mysql.user"
+            )
+
+    def test_blocks_backtick_quoted_schemas(self, sec_mgr):
+        """Test that backtick-quoted blocked schemas are caught."""
+        with pytest.raises(ValueError, match="Access to schema 'mysql' is not allowed"):
+            sec_mgr.extract_and_check_table_refs("SELECT * FROM `mysql`.`user`")
+
+
+@pytest.mark.unit
+@pytest.mark.security
+class TestValidateSqlQueryTableBlocking:
+    """Test that validate_sql_query blocks denied tables and schemas."""
 
     @pytest.fixture
-    def sql_detector(self):
-        """Create SQLInjectionDetector instance."""
-        return SQLInjectionDetector()
+    def security_manager(self) -> KonfluxDevLakeSecurityManager:
+        config = Mock()
+        config.allowed_ips = []
+        config.api_keys = {}
+        return KonfluxDevLakeSecurityManager(config)
 
-    def test_safe_select_queries(self, sql_detector):
-        """Test that SELECT queries are considered safe."""
-        safe_queries = [
-            "SELECT * FROM incidents",
-            "select id, title from incidents where status = 'DONE'",
-            "SELECT COUNT(*) FROM deployments",
-            "select * from incidents order by created_date desc limit 10",
-        ]
+    def test_blocks_denied_table_in_select(self, security_manager):
+        """Test that SELECT from a denied table is blocked."""
+        is_valid, msg = security_manager.validate_sql_query("SELECT * FROM lake._devlake_api_keys")
+        assert is_valid is False
+        assert "_devlake_api_keys" in msg
 
-        for query in safe_queries:
-            is_injection, patterns = sql_detector.detect_sql_injection(query)
-            assert is_injection is False
-            assert patterns == []
+    def test_blocks_raw_table_in_select(self, security_manager):
+        """Test that SELECT from a _raw_ table is blocked."""
+        is_valid, msg = security_manager.validate_sql_query(
+            "SELECT * FROM lake._raw_github_api_pull_requests"
+        )
+        assert is_valid is False
+        assert "_raw_github_api_pull_requests" in msg
 
-    def test_dangerous_sql_operations(self, sql_detector):
-        """Test detection of dangerous SQL operations."""
-        dangerous_queries = [
-            "DROP TABLE incidents",
-            "DELETE FROM incidents WHERE id = 1",
-            "INSERT INTO incidents VALUES (1, 'test')",
-            "UPDATE incidents SET status = 'DONE'",
-            "CREATE TABLE test (id INT)",
-            "ALTER TABLE incidents ADD COLUMN test VARCHAR(255)",
-        ]
+    def test_blocks_connection_table_in_select(self, security_manager):
+        """Test that SELECT from a _connections table is blocked."""
+        is_valid, msg = security_manager.validate_sql_query(
+            "SELECT * FROM lake._tool_github_connections"
+        )
+        assert is_valid is False
+        assert "_tool_github_connections" in msg
 
-        for query in dangerous_queries:
-            is_injection, patterns = sql_detector.detect_sql_injection(query)
-            assert is_injection is True
-            assert len(patterns) > 0
+    def test_blocks_blocked_schema_in_select(self, security_manager):
+        """Test that SELECT from a blocked schema is blocked."""
+        is_valid, msg = security_manager.validate_sql_query("SELECT user FROM mysql.user")
+        assert is_valid is False
+        assert "mysql" in msg
 
-        allowed_queries = [
-            "TRUNCATE TABLE incidents",
-            "GRANT ALL ON incidents TO user",
-            "REVOKE SELECT ON incidents FROM user",
-        ]
-
-        for query in allowed_queries:
-            is_injection, patterns = sql_detector.detect_sql_injection(query)
-
-    def test_empty_query(self, sql_detector):
-        """Test detection with empty query."""
-        is_injection, patterns = sql_detector.detect_sql_injection("")
-        assert is_injection is False
-        assert patterns == []
-
-    def test_none_query(self, sql_detector):
-        """Test detection with None query."""
-        is_injection, patterns = sql_detector.detect_sql_injection(None)
-        assert is_injection is False
-        assert patterns == []
-
-    def test_case_insensitive_detection(self, sql_detector):
-        """Test that detection is case insensitive."""
-        dangerous_queries = [
-            "drop table incidents",
-            "DROP TABLE incidents",
-            "Drop Table incidents",
-            "dRoP tAbLe incidents",
-        ]
-
-        for query in dangerous_queries:
-            is_injection, patterns = sql_detector.detect_sql_injection(query)
-            assert is_injection is True
+    def test_allows_normal_lake_select(self, security_manager):
+        """Test that normal lake SELECT queries still pass."""
+        is_valid, msg = security_manager.validate_sql_query(
+            "SELECT * FROM lake.incidents WHERE status = 'DONE'"
+        )
+        assert is_valid is True
 
 
 @pytest.mark.unit
@@ -202,7 +571,7 @@ class TestKonfluxDevLakeSecurityManager:
     """Test suite for KonfluxDevLakeSecurityManager class."""
 
     @pytest.fixture
-    def mock_config(self):
+    def mock_config(self) -> Mock:
         """Create mock configuration."""
         config = Mock()
         config.allowed_ips = []
@@ -210,7 +579,7 @@ class TestKonfluxDevLakeSecurityManager:
         return config
 
     @pytest.fixture
-    def security_manager(self, mock_config):
+    def security_manager(self, mock_config) -> KonfluxDevLakeSecurityManager:
         """Create KonfluxDevLakeSecurityManager instance."""
         return KonfluxDevLakeSecurityManager(mock_config)
 
@@ -227,6 +596,58 @@ class TestKonfluxDevLakeSecurityManager:
             assert is_valid is True
             assert "Query validation passed" in message
 
+    def test_validate_sql_query_show_and_describe_allowed(self, security_manager):
+        """Test that SHOW and DESCRIBE queries are allowed."""
+        read_only_queries = [
+            "SHOW DATABASES",
+            "SHOW TABLES FROM `lake`",
+            "show tables from `lake`",
+            "DESCRIBE `lake`.`incidents`",
+            "describe `lake`.`pull_requests`",
+            "DESC `lake`.`repos`",
+            "EXPLAIN SELECT * FROM lake.incidents",
+            "WITH cte AS (SELECT * FROM lake.incidents) SELECT * FROM cte",
+            "with _rank AS (SELECT id, row_number() OVER() as rn FROM lake.cicd_deployment_commits)"
+            " SELECT * FROM _rank WHERE rn = 1",
+        ]
+
+        for query in read_only_queries:
+            is_valid, message = security_manager.validate_sql_query(query)
+            assert is_valid is True, f"Query should be allowed: {query}"
+
+    def test_validate_sql_query_show_restricted(self, security_manager):
+        """Test that dangerous SHOW variants are blocked."""
+        blocked_show_queries = [
+            "SHOW GRANTS",
+            "SHOW GRANTS FOR CURRENT_USER",
+            "SHOW CREATE USER root@localhost",
+            "SHOW VARIABLES",
+            "SHOW GLOBAL VARIABLES",
+            "SHOW STATUS",
+            "SHOW PROCESSLIST",
+            "SHOW MASTER STATUS",
+            "SHOW SLAVE STATUS",
+            "SHOW ENGINES",
+            "SHOW PLUGINS",
+        ]
+        for query in blocked_show_queries:
+            is_valid, message = security_manager.validate_sql_query(query)
+            assert is_valid is False, f"Query should be blocked: {query}"
+            assert "SHOW DATABASES" in message or "SHOW TABLES" in message
+
+    def test_validate_sql_query_show_tables_blocked_schema(self, security_manager):
+        """Test that SHOW TABLES FROM a blocked schema is rejected."""
+        blocked = [
+            "SHOW TABLES FROM mysql",
+            "SHOW TABLES FROM `information_schema`",
+            "SHOW TABLES FROM performance_schema",
+            "show tables from sys",
+        ]
+        for query in blocked:
+            is_valid, message = security_manager.validate_sql_query(query)
+            assert is_valid is False, f"Query should be blocked: {query}"
+            assert "schema" in message.lower()
+
     def test_validate_sql_query_dangerous_operations(self, security_manager):
         """Test that dangerous operations are blocked."""
         dangerous_queries = [
@@ -241,7 +662,7 @@ class TestKonfluxDevLakeSecurityManager:
         for query in dangerous_queries:
             is_valid, message = security_manager.validate_sql_query(query)
             assert is_valid is False
-            assert "Query doesn't start with SELECT" in message
+            assert "read-only" in message
 
     def test_validate_sql_query_unbalanced_parentheses(self, security_manager):
         """Test detection of unbalanced parentheses."""

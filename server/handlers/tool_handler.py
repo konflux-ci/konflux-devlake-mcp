@@ -13,7 +13,7 @@ from mcp.types import TextContent
 
 from utils.logger import get_logger
 from utils.db import DateTimeEncoder
-from utils.security import SQLInjectionDetector, DataMasking
+from utils.security import DataMasking
 
 
 class ToolHandler:
@@ -38,7 +38,6 @@ class ToolHandler:
         """
         self.tools_manager = tools_manager
         self.security_manager = security_manager
-        self.sql_injection_detector = SQLInjectionDetector()
         self.data_masking = DataMasking()
         self.logger = get_logger(f"{__name__}.ToolHandler")
 
@@ -84,29 +83,47 @@ class ToolHandler:
         Returns:
             Validation result with valid flag and optional error message
         """
-        # Security validation for query-based tools
-        if name in ["execute_query"]:
-            query = arguments.get("query", "")
-            if query:
-                # Validate SQL query
-                is_valid, validation_msg = self.security_manager.validate_sql_query(query)
-                if not is_valid:
-                    self.logger.warning(f"SQL query validation failed: {validation_msg}")
+        # Validate common arguments for all tools
+        common_string_args = ["project_name", "project", "repo_name"]
+        common_date_args = ["start_date", "end_date"]
+        common_int_args = ["days_back", "limit"]
+
+        for arg_name in common_string_args:
+            if arg_name in arguments and arguments[arg_name]:
+                try:
+                    self.security_manager.validate_identifier(arguments[arg_name], arg_name)
+                except ValueError as e:
+                    self.logger.warning(f"Input validation failed for {arg_name}: {e}")
                     return {
                         "valid": False,
-                        "error": f"SQL query validation failed: {validation_msg}",
+                        "error": str(e),
                         "security_check": "failed",
                     }
 
-                # Check for SQL injection
-                is_injection, patterns = self.sql_injection_detector.detect_sql_injection(query)
-                if is_injection:
-                    self.logger.warning(f"Potential SQL injection detected: {patterns}")
+        for arg_name in common_date_args:
+            if arg_name in arguments and arguments[arg_name]:
+                try:
+                    self.security_manager.validate_date_string(arguments[arg_name], arg_name)
+                except ValueError as e:
+                    self.logger.warning(f"Input validation failed for {arg_name}: {e}")
                     return {
                         "valid": False,
-                        "error": "Potential SQL injection detected",
+                        "error": str(e),
                         "security_check": "failed",
-                        "detected_patterns": patterns,
+                    }
+
+        for arg_name in common_int_args:
+            if arg_name in arguments and arguments[arg_name] is not None:
+                try:
+                    arguments[arg_name] = self.security_manager.validate_positive_int(
+                        arguments[arg_name], arg_name
+                    )
+                except ValueError as e:
+                    self.logger.warning(f"Input validation failed for {arg_name}: {e}")
+                    return {
+                        "valid": False,
+                        "error": str(e),
+                        "security_check": "failed",
                     }
 
         # Validate database and table names
@@ -129,6 +146,13 @@ class ToolHandler:
                 return {
                     "valid": False,
                     "error": f"Table name validation failed: {validation_msg}",
+                    "security_check": "failed",
+                }
+            if self.security_manager.is_table_denied(table):
+                self.logger.warning(f"Access to table '{table}' is denied")
+                return {
+                    "valid": False,
+                    "error": f"Access to table '{table}' is denied",
                     "security_check": "failed",
                 }
 

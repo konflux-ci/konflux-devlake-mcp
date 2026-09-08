@@ -102,7 +102,7 @@ class PRStatsTools(BaseTool):
             return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
 
     async def _execute_with_timeout(
-        self, query: str, limit: int, timeout: int = 60
+        self, query: str, limit: int, timeout: int = 60, params: tuple = None
     ) -> Dict[str, Any]:
         """
         Execute query with timeout.
@@ -111,13 +111,15 @@ class PRStatsTools(BaseTool):
             query: SQL query to execute
             limit: Maximum number of rows to return
             timeout: Timeout in seconds (default: 60)
+            params: Query parameters for parameterized queries
 
         Returns:
             Query result dictionary
         """
         try:
             return await asyncio.wait_for(
-                self.db_connection.execute_query(query, limit), timeout=timeout
+                self.db_connection.execute_query(query, limit, params=params),
+                timeout=timeout,
             )
         except asyncio.TimeoutError:
             self.logger.warning(f"Query timed out after {timeout}s")
@@ -176,14 +178,16 @@ class PRStatsTools(BaseTool):
                 return {"success": False, "error": "project_name is required"}
 
             # Step 1: Get repo IDs for this project
-            repo_ids_query = f"""
+            repo_ids_query = """
                 SELECT DISTINCT r.id, r.name, r.url
                 FROM lake.repos r
                 INNER JOIN lake.project_mapping pm ON r.id = pm.row_id
-                WHERE pm.project_name = '{project_name}'
+                WHERE pm.project_name = %s
                 AND pm.`table` = 'repos'
             """
-            repo_ids_result = await self._execute_with_timeout(repo_ids_query, 500, timeout=30)
+            repo_ids_result = await self._execute_with_timeout(
+                repo_ids_query, 500, timeout=30, params=(project_name,)
+            )
 
             if not repo_ids_result.get("success") or not repo_ids_result.get("data"):
                 return {
@@ -206,8 +210,8 @@ class PRStatsTools(BaseTool):
                     "stale_prs": [],
                 }
 
-            repo_ids = [f"'{r['id']}'" for r in repo_ids_result["data"]]
-            repo_ids_str = ",".join(repo_ids)
+            repo_id_values = [r["id"] for r in repo_ids_result["data"]]
+            repo_placeholders = ",".join(["%s"] * len(repo_id_values))
 
             # Step 2: Build queries
             # Query 2: Open PRs (using DISTINCT to avoid duplicates)
@@ -224,10 +228,11 @@ class PRStatsTools(BaseTool):
                     (COALESCE(pr.additions, 0) + COALESCE(pr.deletions, 0)) as total_changes
                 FROM lake.pull_requests pr
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                WHERE r.id IN ({repo_ids_str})
+                WHERE r.id IN ({repo_placeholders})
                 AND pr.status = 'OPEN'
                 ORDER BY days_open DESC
             """
+            open_prs_params = tuple(repo_id_values)
 
             # Query 3: PR Summary per Repository (using COUNT DISTINCT to avoid duplicates)
             repo_summary_query = f"""
@@ -239,29 +244,30 @@ class PRStatsTools(BaseTool):
                     COUNT(DISTINCT CASE WHEN pr.status = 'CLOSED' THEN pr.id END) as closed_prs
                 FROM lake.pull_requests pr
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                WHERE r.id IN ({repo_ids_str})
-                AND pr.created_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE r.id IN ({repo_placeholders})
+                AND pr.created_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 GROUP BY r.name
                 ORDER BY total_prs DESC
             """
+            repo_summary_params = tuple(list(repo_id_values) + [days_back])
 
             # Query 4: PR Type Breakdown (Bot vs Engineering) - using COUNT DISTINCT
             pr_type_query = f"""
                 SELECT
                     CASE
-                        WHEN LOWER(pr.title) LIKE '%chore(deps)%'
-                             OR LOWER(pr.title) LIKE '%fix(deps)%'
-                             OR LOWER(pr.title) LIKE '%update%docker%'
-                             OR LOWER(pr.title) LIKE '%update%digest%'
-                             OR LOWER(pr.title) LIKE '%dependencies%'
-                             OR LOWER(pr.title) LIKE '%renovate%'
-                             OR LOWER(pr.title) LIKE '%dependabot%'
-                             OR LOWER(pr.title) LIKE '%bump %'
+                        WHEN LOWER(pr.title) LIKE '%%chore(deps)%%'
+                             OR LOWER(pr.title) LIKE '%%fix(deps)%%'
+                             OR LOWER(pr.title) LIKE '%%update%%docker%%'
+                             OR LOWER(pr.title) LIKE '%%update%%digest%%'
+                             OR LOWER(pr.title) LIKE '%%dependencies%%'
+                             OR LOWER(pr.title) LIKE '%%renovate%%'
+                             OR LOWER(pr.title) LIKE '%%dependabot%%'
+                             OR LOWER(pr.title) LIKE '%%bump %%'
                              THEN 'dependency_bot'
-                        WHEN LOWER(pr.title) LIKE '%dnm%'
-                             OR LOWER(pr.title) LIKE '%do not merge%'
-                             OR LOWER(pr.title) LIKE '%wip%'
-                             OR LOWER(pr.title) LIKE '%draft%'
+                        WHEN LOWER(pr.title) LIKE '%%dnm%%'
+                             OR LOWER(pr.title) LIKE '%%do not merge%%'
+                             OR LOWER(pr.title) LIKE '%%wip%%'
+                             OR LOWER(pr.title) LIKE '%%draft%%'
                              THEN 'wip_exclude'
                         ELSE 'engineering'
                     END as pr_type,
@@ -273,10 +279,11 @@ class PRStatsTools(BaseTool):
                          THEN pr.id END) as stale_14d
                 FROM lake.pull_requests pr
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                WHERE r.id IN ({repo_ids_str})
-                AND pr.created_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE r.id IN ({repo_placeholders})
+                AND pr.created_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 GROUP BY pr_type
             """
+            pr_type_params = tuple(list(repo_id_values) + [days_back])
 
             # Query 5: Stale PRs (>7 days) - using DISTINCT to avoid duplicates
             stale_prs_query = f"""
@@ -289,12 +296,13 @@ class PRStatsTools(BaseTool):
                     (COALESCE(pr.additions, 0) + COALESCE(pr.deletions, 0)) as total_changes
                 FROM lake.pull_requests pr
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                WHERE r.id IN ({repo_ids_str})
+                WHERE r.id IN ({repo_placeholders})
                 AND pr.status = 'OPEN'
                 AND TIMESTAMPDIFF(DAY, pr.created_date, NOW()) > 7
                 ORDER BY days_open DESC
                 LIMIT 50
             """
+            stale_prs_params = tuple(repo_id_values)
 
             # Query 6: Overall summary - using COUNT DISTINCT to avoid duplicates
             summary_query = f"""
@@ -311,17 +319,22 @@ class PRStatsTools(BaseTool):
                          THEN pr.id END) as stale_prs_14d
                 FROM lake.pull_requests pr
                 INNER JOIN lake.repos r ON pr.base_repo_id = r.id
-                WHERE r.id IN ({repo_ids_str})
-                AND pr.created_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)
+                WHERE r.id IN ({repo_placeholders})
+                AND pr.created_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """
+            summary_params = tuple(list(repo_id_values) + [days_back])
 
             # Step 3: Run all queries in parallel
             results = await asyncio.gather(
-                self._execute_with_timeout(open_prs_query, 200, timeout=60),
-                self._execute_with_timeout(repo_summary_query, 100, timeout=60),
-                self._execute_with_timeout(pr_type_query, 10, timeout=60),
-                self._execute_with_timeout(stale_prs_query, 50, timeout=60),
-                self._execute_with_timeout(summary_query, 1, timeout=60),
+                self._execute_with_timeout(open_prs_query, 200, timeout=60, params=open_prs_params),
+                self._execute_with_timeout(
+                    repo_summary_query, 100, timeout=60, params=repo_summary_params
+                ),
+                self._execute_with_timeout(pr_type_query, 10, timeout=60, params=pr_type_params),
+                self._execute_with_timeout(
+                    stale_prs_query, 50, timeout=60, params=stale_prs_params
+                ),
+                self._execute_with_timeout(summary_query, 1, timeout=60, params=summary_params),
                 return_exceptions=True,
             )
 

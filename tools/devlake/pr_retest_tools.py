@@ -163,13 +163,13 @@ class PRRetestTools(BaseTool):
         Returns:
             List of unique repository names
         """
-        query = f"""
+        query = """
             SELECT DISTINCT r.name
             FROM lake.repos r
             INNER JOIN lake.project_mapping pm ON r.id = pm.row_id AND pm.`table` = 'repos'
-            WHERE pm.project_name = '{project_name}'
+            WHERE pm.project_name = %s
         """
-        result = await self.db_connection.execute_query(query, 500)
+        result = await self.db_connection.execute_query(query, 500, params=(project_name,))
 
         if result["success"] and result["data"]:
             return [row["name"] for row in result["data"]]
@@ -197,18 +197,22 @@ class PRRetestTools(BaseTool):
 
             # Build date filter (uses prc.created_date - comment date, not PR creation date)
             date_filter = ""
+            date_filter_params = []
             if start_date or end_date:
                 if start_date:
                     if len(start_date) == 10:
                         start_date = f"{start_date} 00:00:00"
-                    date_filter += f" AND prc.created_date >= '{start_date}'"
+                    date_filter += " AND prc.created_date >= %s"
+                    date_filter_params.append(start_date)
 
                 if end_date:
                     if len(end_date) == 10:
                         end_date = f"{end_date} 23:59:59"
-                    date_filter += f" AND prc.created_date <= '{end_date}'"
+                    date_filter += " AND prc.created_date <= %s"
+                    date_filter_params.append(end_date)
             elif days_back > 0:
-                date_filter = f" AND prc.created_date >= DATE_SUB(NOW(), INTERVAL {days_back} DAY)"
+                date_filter = " AND prc.created_date >= DATE_SUB(NOW(), INTERVAL %s DAY)"
+                date_filter_params.append(days_back)
 
             # SMART REPO RESOLUTION: Convert project_name to repo names
             # This avoids issues with duplicate repo IDs in project_mapping
@@ -230,11 +234,14 @@ class PRRetestTools(BaseTool):
 
             # Build repo filter SQL (by NAME, not by project_mapping JOIN)
             repo_filter = ""
+            repo_filter_params = []
             if target_repos:
-                repo_names_sql = ", ".join([f"'{r}'" for r in target_repos])
-                repo_filter = f" AND r.name IN ({repo_names_sql})"
+                placeholders = ", ".join(["%s"] * len(target_repos))
+                repo_filter = f" AND r.name IN ({placeholders})"
+                repo_filter_params = list(target_repos)
             elif repo_name:
-                repo_filter = f" AND r.name LIKE '%{repo_name}%'"
+                repo_filter = " AND r.name LIKE %s"
+                repo_filter_params = [f"%{repo_name}%"]
 
             # Build bot exclusion filter
             # 1. Exclude known bot account
@@ -246,6 +253,8 @@ class PRRetestTools(BaseTool):
                     AND prc.account_id != 'github:GithubAccount:1:0'
                     AND LENGTH(TRIM(prc.body)) < 20
                 """
+
+            filter_params = repo_filter_params + date_filter_params
 
             # Step 1: Get total count and affected PRs in one query
             total_query = f"""
@@ -264,7 +273,9 @@ class PRRetestTools(BaseTool):
                     {bot_filter}
             """
 
-            total_result = await self.db_connection.execute_query(total_query, 1)
+            total_result = await self.db_connection.execute_query(
+                total_query, 1, params=tuple(filter_params)
+            )
             if total_result["success"] and total_result["data"]:
                 total_retests = int(float(total_result["data"][0]["total_retests"] or 0))
                 affected_prs = int(float(total_result["data"][0]["affected_prs"] or 0))
@@ -306,10 +317,13 @@ class PRRetestTools(BaseTool):
                 GROUP BY pr.id, pr.title, pr.url, pr.status, pr.created_date,
                          pr.merged_date, pr.closed_date, pr.additions, pr.deletions, r.name
                 ORDER BY retest_count DESC
-                LIMIT {top_n}
+                LIMIT %s
             """
 
-            top_prs_result = await self.db_connection.execute_query(top_prs_query, top_n)
+            top_prs_params = list(filter_params) + [top_n]
+            top_prs_result = await self.db_connection.execute_query(
+                top_prs_query, top_n, params=tuple(top_prs_params)
+            )
             top_prs = top_prs_result["data"] if top_prs_result["success"] else []
 
             # Step 3: Get timeline data for visualization
@@ -331,23 +345,25 @@ class PRRetestTools(BaseTool):
                 ORDER BY date ASC
             """
 
-            timeline_result = await self.db_connection.execute_query(timeline_query, 1000)
+            timeline_result = await self.db_connection.execute_query(
+                timeline_query, 1000, params=tuple(filter_params)
+            )
             timeline_data = timeline_result["data"] if timeline_result["success"] else []
 
             # Step 4: Get breakdown by PR category (based on title keywords)
             category_query = f"""
                 SELECT
                     CASE
-                        WHEN LOWER(pr.title) LIKE '%bug%' OR
-                             LOWER(pr.title) LIKE '%fix%' THEN 'Bug Fixes'
-                        WHEN LOWER(pr.title) LIKE '%feat%' OR
-                             LOWER(pr.title) LIKE '%feature%' THEN 'Features'
-                        WHEN LOWER(pr.title) LIKE '%dep%' OR
-                             LOWER(pr.title) LIKE '%dependenc%' THEN 'Dependencies'
-                        WHEN LOWER(pr.title) LIKE '%refactor%' THEN 'Refactoring'
-                        WHEN LOWER(pr.title) LIKE '%test%' THEN 'Tests'
-                        WHEN LOWER(pr.title) LIKE '%doc%' THEN 'Documentation'
-                        WHEN LOWER(pr.title) LIKE '%chore%' THEN 'Chores'
+                        WHEN LOWER(pr.title) LIKE '%%bug%%' OR
+                             LOWER(pr.title) LIKE '%%fix%%' THEN 'Bug Fixes'
+                        WHEN LOWER(pr.title) LIKE '%%feat%%' OR
+                             LOWER(pr.title) LIKE '%%feature%%' THEN 'Features'
+                        WHEN LOWER(pr.title) LIKE '%%dep%%' OR
+                             LOWER(pr.title) LIKE '%%dependenc%%' THEN 'Dependencies'
+                        WHEN LOWER(pr.title) LIKE '%%refactor%%' THEN 'Refactoring'
+                        WHEN LOWER(pr.title) LIKE '%%test%%' THEN 'Tests'
+                        WHEN LOWER(pr.title) LIKE '%%doc%%' THEN 'Documentation'
+                        WHEN LOWER(pr.title) LIKE '%%chore%%' THEN 'Chores'
                         ELSE 'Other'
                     END as category,
                     COUNT(DISTINCT pr.id) as pr_count,
@@ -366,7 +382,9 @@ class PRRetestTools(BaseTool):
                 ORDER BY total_retests DESC
             """
 
-            category_result = await self.db_connection.execute_query(category_query, 20)
+            category_result = await self.db_connection.execute_query(
+                category_query, 20, params=tuple(filter_params)
+            )
             category_breakdown = category_result["data"] if category_result["success"] else []
 
             # Step 5: Analyze root causes and patterns by PR status
@@ -395,7 +413,9 @@ class PRRetestTools(BaseTool):
                 ORDER BY avg_retests DESC
             """
 
-            pattern_result = await self.db_connection.execute_query(pattern_query, 10)
+            pattern_result = await self.db_connection.execute_query(
+                pattern_query, 10, params=tuple(filter_params)
+            )
             pattern_analysis = pattern_result["data"] if pattern_result["success"] else []
 
             # Step 6: Get per-repository breakdown
@@ -421,7 +441,7 @@ class PRRetestTools(BaseTool):
             """
 
             repo_breakdown_result = await self.db_connection.execute_query(
-                repo_breakdown_query, 100
+                repo_breakdown_query, 100, params=tuple(filter_params)
             )
             repo_breakdown = (
                 repo_breakdown_result["data"] if repo_breakdown_result["success"] else []
@@ -449,7 +469,9 @@ class PRRetestTools(BaseTool):
                 LIMIT 12
             """
 
-            weekly_trend_result = await self.db_connection.execute_query(weekly_trend_query, 12)
+            weekly_trend_result = await self.db_connection.execute_query(
+                weekly_trend_query, 12, params=tuple(filter_params)
+            )
             weekly_trend = weekly_trend_result["data"] if weekly_trend_result["success"] else []
 
             # Format top PRs for better readability

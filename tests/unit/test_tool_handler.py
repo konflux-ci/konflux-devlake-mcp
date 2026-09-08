@@ -36,7 +36,6 @@ class TestValidateToolRequest:
     @pytest.fixture
     def handler(self):
         sec_mgr = Mock()
-        sec_mgr.validate_sql_query.return_value = (True, "")
         sec_mgr.validate_database_name.return_value = (True, "")
         sec_mgr.validate_table_name.return_value = (True, "")
         return ToolHandler(Mock(), sec_mgr)
@@ -45,34 +44,6 @@ class TestValidateToolRequest:
     async def test_normal_tool_passes(self, handler):
         result = await handler._validate_tool_request("get_pr_stats", {"project": "x"})
         assert result["valid"] is True
-
-    @pytest.mark.asyncio
-    async def test_execute_query_valid(self, handler):
-        result = await handler._validate_tool_request("execute_query", {"query": "SELECT 1"})
-        assert result["valid"] is True
-
-    @pytest.mark.asyncio
-    async def test_execute_query_sql_invalid(self, handler):
-        handler.security_manager.validate_sql_query.return_value = (
-            False,
-            "dangerous query",
-        )
-        result = await handler._validate_tool_request(
-            "execute_query", {"query": "DROP TABLE users"}
-        )
-        assert result["valid"] is False
-        assert "SQL query validation failed" in result["error"]
-
-    @pytest.mark.asyncio
-    async def test_execute_query_injection(self, handler):
-        handler.sql_injection_detector.detect_sql_injection = Mock(
-            return_value=(True, ["UNION SELECT"])
-        )
-        result = await handler._validate_tool_request(
-            "execute_query", {"query": "1 UNION SELECT * FROM users"}
-        )
-        assert result["valid"] is False
-        assert "SQL injection" in result["error"]
 
     @pytest.mark.asyncio
     async def test_list_tables_invalid_db(self, handler):
@@ -95,6 +66,124 @@ class TestValidateToolRequest:
         )
         assert result["valid"] is False
         assert "Table name" in result["error"]
+
+
+@pytest.mark.unit
+class TestValidateToolRequestInputValidation:
+    """Test centralized input validation for all tools."""
+
+    @pytest.fixture
+    def handler(self):
+        from utils.security import KonfluxDevLakeSecurityManager
+
+        sec_mgr = KonfluxDevLakeSecurityManager(Mock())
+        return ToolHandler(Mock(), sec_mgr)
+
+    @pytest.mark.asyncio
+    async def test_rejects_sql_injection_in_project_name(self, handler):
+        result = await handler._validate_tool_request(
+            "get_deployments",
+            {"project": "x') UNION SELECT user FROM mysql.user -- "},
+        )
+        assert result["valid"] is False
+        assert "disallowed" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_rejects_sql_injection_in_project_name_arg(self, handler):
+        result = await handler._validate_tool_request(
+            "get_incidents",
+            {"project_name": "x'; DROP TABLE incidents; --"},
+        )
+        assert result["valid"] is False
+
+    @pytest.mark.asyncio
+    async def test_rejects_sql_injection_in_repo_name(self, handler):
+        result = await handler._validate_tool_request(
+            "analyze_pr_retests",
+            {"repo_name": "repo; DROP TABLE incidents --"},
+        )
+        assert result["valid"] is False
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_date(self, handler):
+        result = await handler._validate_tool_request(
+            "get_deployments",
+            {"start_date": "not-a-date"},
+        )
+        assert result["valid"] is False
+        assert "start_date" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_rejects_negative_days_back(self, handler):
+        result = await handler._validate_tool_request(
+            "get_deployments",
+            {"days_back": -1},
+        )
+        assert result["valid"] is False
+        assert "days_back" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_allows_legitimate_project_names(self, handler):
+        legitimate_names = [
+            "Konflux_Pilot_Team",
+            "Secureflow - Konflux - Global",
+            "Secureflow - Konflux - Build Team",
+        ]
+        for name in legitimate_names:
+            result = await handler._validate_tool_request("get_deployments", {"project": name})
+            assert result["valid"] is True, f"Rejected legitimate project name: {name}"
+
+    @pytest.mark.asyncio
+    async def test_allows_valid_dates(self, handler):
+        result = await handler._validate_tool_request(
+            "get_deployments",
+            {"start_date": "2024-01-15", "end_date": "2024-01-31"},
+        )
+        assert result["valid"] is True
+
+    @pytest.mark.asyncio
+    async def test_skips_empty_optional_args(self, handler):
+        result = await handler._validate_tool_request(
+            "get_deployments",
+            {"project": "", "start_date": "", "days_back": None},
+        )
+        assert result["valid"] is True
+
+    @pytest.mark.asyncio
+    async def test_rejects_denied_table_in_get_table_schema(self, handler):
+        result = await handler._validate_tool_request(
+            "get_table_schema",
+            {"database": "lake", "table": "_devlake_api_keys"},
+        )
+        assert result["valid"] is False
+        assert "_devlake_api_keys" in result["error"]
+        assert result["security_check"] == "failed"
+
+    @pytest.mark.asyncio
+    async def test_rejects_connection_table_in_get_table_schema(self, handler):
+        result = await handler._validate_tool_request(
+            "get_table_schema",
+            {"database": "lake", "table": "_tool_github_connections"},
+        )
+        assert result["valid"] is False
+        assert "_tool_github_connections" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_rejects_raw_table_in_get_table_schema(self, handler):
+        result = await handler._validate_tool_request(
+            "get_table_schema",
+            {"database": "lake", "table": "_raw_github_api_issues"},
+        )
+        assert result["valid"] is False
+        assert "_raw_github_api_issues" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_allows_normal_table_in_get_table_schema(self, handler):
+        result = await handler._validate_tool_request(
+            "get_table_schema",
+            {"database": "lake", "table": "incidents"},
+        )
+        assert result["valid"] is True
 
 
 @pytest.mark.unit

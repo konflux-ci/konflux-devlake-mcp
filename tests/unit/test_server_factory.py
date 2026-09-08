@@ -154,9 +154,11 @@ class TestServerFactoryCreateServer:
         factory = ServerFactory()
         result = factory.create_server(mock_config)
 
-        mock_conn_cls.assert_called_once_with(mock_config.get_database_config())
-        mock_tools_cls.assert_called_once_with(mock_conn_instance)
         mock_sec_cls.assert_called_once_with(mock_config)
+        mock_conn_cls.assert_called_once_with(
+            mock_config.get_database_config(), security_manager=mock_sec_instance
+        )
+        mock_tools_cls.assert_called_once_with(mock_conn_instance)
 
         mock_server_cls.assert_called_once_with(
             config=mock_config,

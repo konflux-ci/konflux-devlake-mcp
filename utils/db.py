@@ -82,12 +82,13 @@ class KonfluxDevLakeConnection:
     DEFAULT_MAX_CONNECTIONS = 50  # Scale up to 20 for concurrent users
     DEFAULT_POOL_RECYCLE = 300  # Recycle connections after 5 minutes
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], security_manager=None):
         self.config = config
         self._pool: Optional[aiomysql.Pool] = None
         self.logger = get_logger(f"{__name__}.KonfluxDevLakeConnection")
         self._last_health_check: float = 0
         self._pool_lock = asyncio.Lock()
+        self._security_manager = security_manager
 
     async def connect(self) -> Dict[str, Any]:
         """Initialize the connection pool."""
@@ -199,11 +200,24 @@ class KonfluxDevLakeConnection:
             log_database_operation("connect", success=False, error=str(last_error))
             return {"success": False, "error": str(last_error)}
 
-    async def execute_query(self, query: str, limit: int = 100) -> Dict[str, Any]:
-        """Execute a SQL query using a connection from the pool."""
-        return await self._execute_with_retry(query, limit)
+    async def execute_query(
+        self, query: str, limit: int = 100, params: Optional[tuple] = None
+    ) -> Dict[str, Any]:
+        """Execute a SQL query using a connection from the pool.
 
-    async def _execute_with_retry(self, query: str, limit: int = 100) -> Dict[str, Any]:
+        All queries are validated through the security manager (if set)
+        before execution, regardless of source.
+        """
+        if self._security_manager is not None:
+            is_valid, msg = self._security_manager.validate_sql_query(query)
+            if not is_valid:
+                self.logger.warning(f"Query blocked by security validation: {msg}")
+                return {"success": False, "error": msg}
+        return await self._execute_with_retry(query, limit, params=params)
+
+    async def _execute_with_retry(
+        self, query: str, limit: int = 100, params: Optional[tuple] = None
+    ) -> Dict[str, Any]:
         """Execute a query with retry logic for transient failures."""
         last_error = None
         delay = self.INITIAL_RETRY_DELAY
@@ -220,7 +234,7 @@ class KonfluxDevLakeConnection:
 
                 async with self._pool.acquire() as conn:
                     async with conn.cursor() as cursor:
-                        await cursor.execute(query)
+                        await cursor.execute(query, params)
                         results = await cursor.fetchall()
 
                 # Serialize datetime objects to prevent JSON serialization issues

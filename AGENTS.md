@@ -37,7 +37,7 @@ Commands: `make test-unit` (mocked DB) | `make test-integration` (docker compose
 
 - Always qualify: `lake.table_name` — no CTEs, use subqueries
 - CAST DECIMAL to CHAR in SELECT results
-- NEVER interpolate user input via f-strings in SQL. Validate ALL user-supplied values through `SQLInjectionDetector` (`utils/security.py`) before embedding in queries
+- NEVER interpolate user input via f-strings in SQL. Use parameterized queries (`execute_query(query, limit, params=)`) and validate inputs through `KonfluxDevLakeSecurityManager` (`utils/security.py`)
 
 ## Code Style
 

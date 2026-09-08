@@ -133,8 +133,10 @@ class JiraTools(BaseTool):
 
             # Build WHERE conditions
             status_filter = ""
+            status_params = []
             if status:
-                status_filter = f"AND i.status_name = '{status}'"
+                status_filter = "AND i.status_name = %s"
+                status_params = [status]
 
             # Query for Features
             features_query = f"""
@@ -188,7 +190,9 @@ class JiraTools(BaseTool):
 
             # Execute queries in parallel
             features_result, summary_result = await asyncio.gather(
-                self.db_connection.execute_query(features_query, limit),
+                self.db_connection.execute_query(
+                    features_query, limit, params=tuple(status_params)
+                ),
                 self.db_connection.execute_query(summary_query, 1),
             )
 
@@ -272,15 +276,15 @@ class JiraTools(BaseTool):
         Returns:
             Comma-separated string of board IDs, or empty string if none found
         """
-        query = f"""
+        query = """
             SELECT DISTINCT
                 CAST(SUBSTRING_INDEX(pm.row_id, ':', -1) AS UNSIGNED) AS board_id
             FROM lake.project_mapping pm
-            WHERE pm.project_name = '{project_name}'
+            WHERE pm.project_name = %s
                 AND pm.`table` = 'boards'
-                AND pm.row_id LIKE 'jira:JiraBoard:%'
+                AND pm.row_id LIKE 'jira:JiraBoard:%%'
         """
-        result = await self.db_connection.execute_query(query, 100)
+        result = await self.db_connection.execute_query(query, 100, params=(project_name,))
         if result["success"] and result["data"]:
             board_ids = [str(row["board_id"]) for row in result["data"]]
             return ", ".join(board_ids)

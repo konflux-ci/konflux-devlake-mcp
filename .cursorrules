@@ -162,7 +162,7 @@ utils/
 
 ### SQL Injection Prevention
 - Always use parameterized queries or validated string formatting
-- Use `SQLInjectionDetector` from `utils.security` for validation
+- Use `KonfluxDevLakeSecurityManager` from `utils.security` for validation
 - Never concatenate user input directly into SQL queries
 - Validate table and database names before use
 
