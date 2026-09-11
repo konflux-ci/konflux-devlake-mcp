@@ -371,8 +371,7 @@ class TestOIDCAuthenticatorTokenValidation:
 
         # Mock decoded token payload
         mock_payload = {
-            "sub": "user-123",
-            "preferred_username": "testuser",
+            "sub": "f:idp-123:testuser",
             "email": "test@example.com",
             "groups": ["developers"],
             "scope": "openid profile email",
@@ -384,7 +383,7 @@ class TestOIDCAuthenticatorTokenValidation:
                     result = await auth.validate_token("valid.token.here")
 
         assert result.authenticated is True
-        assert result.user_id == "user-123"
+        assert result.user_id == "f:idp-123:testuser"
         assert result.username == "testuser"
         assert result.email == "test@example.com"
         assert result.groups == ["developers"]
@@ -407,8 +406,8 @@ class TestOIDCAuthenticatorTokenValidation:
 
         # Mock decoded token payload with insufficient scopes
         mock_payload = {
-            "sub": "user-123",
-            "preferred_username": "testuser",
+            "sub": "f:idp-123:testuser",
+            "email": "test@example.com",
             "scope": "openid profile",  # Missing 'admin' and 'write'
         }
 
@@ -436,8 +435,8 @@ class TestOIDCAuthenticatorTokenValidation:
 
         # Mock decoded token payload with Keycloak realm_access
         mock_payload = {
-            "sub": "user-123",
-            "preferred_username": "testuser",
+            "sub": "f:idp-123:testuser",
+            "email": "test@example.com",
             "realm_access": {
                 "roles": ["user", "admin"],
             },
@@ -451,6 +450,73 @@ class TestOIDCAuthenticatorTokenValidation:
 
         assert result.authenticated is True
         assert result.groups == ["user", "admin"]
+
+    @pytest.mark.asyncio
+    async def test_validate_token_without_sub_is_rejected(self):
+        """Test that validated access tokens without a sub claim are rejected."""
+        config = OIDCConfig(
+            enabled=True,
+            issuer_url="https://sso.example.com/realms/test",
+            client_id="mcp-server",
+        )
+        auth = OIDCAuthenticator(config)
+        mock_jwks = {"keys": [{"kid": "test-key-id", "kty": "RSA"}]}
+        mock_payload = {"email": "test@example.com", "scope": "openid"}
+
+        with patch.object(auth, "_fetch_jwks", return_value=mock_jwks):
+            with patch.object(auth, "_get_signing_key_from_jwt", return_value="test-key"):
+                with patch("jwt.decode", return_value=mock_payload):
+                    result = await auth.validate_token("valid.token.here")
+
+        assert result.authenticated is False
+        assert result.status_code == 401
+        assert "usable sub claim" in result.error
+
+    @pytest.mark.asyncio
+    async def test_validate_token_uses_sub_username(self):
+        """Test that LDAP username comes from the validated sub claim."""
+        config = OIDCConfig(
+            enabled=True,
+            issuer_url="https://sso.example.com/realms/test",
+            client_id="mcp-server",
+        )
+        auth = OIDCAuthenticator(config)
+        mock_jwks = {"keys": [{"kid": "test-key-id", "kty": "RSA"}]}
+        mock_payload = {
+            "sub": "f:528d76ff-f708-43ed-8cd5-fe16f4fe0ce6:llipka",
+            "preferred_username": "unexpected-provider-value",
+            "username": "another-provider-value",
+            "scope": "openid",
+        }
+
+        with patch.object(auth, "_fetch_jwks", return_value=mock_jwks):
+            with patch.object(auth, "_get_signing_key_from_jwt", return_value="test-key"):
+                with patch("jwt.decode", return_value=mock_payload):
+                    result = await auth.validate_token("valid.token.here")
+
+        assert result.authenticated is True
+        assert result.username == "llipka"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("sub", ["", "opaque-subject", "f::llipka", "f:idp:", "x:idp:llipka"])
+    async def test_validate_token_rejects_invalid_sub(self, sub):
+        """Test that malformed sub claims cannot produce an LDAP username."""
+        config = OIDCConfig(
+            enabled=True,
+            issuer_url="https://sso.example.com/realms/test",
+            client_id="mcp-server",
+        )
+        auth = OIDCAuthenticator(config)
+        mock_jwks = {"keys": [{"kid": "test-key-id", "kty": "RSA"}]}
+        mock_payload = {"sub": sub, "email": "test@example.com", "scope": "openid"}
+
+        with patch.object(auth, "_fetch_jwks", return_value=mock_jwks):
+            with patch.object(auth, "_get_signing_key_from_jwt", return_value="test-key"):
+                with patch("jwt.decode", return_value=mock_payload):
+                    result = await auth.validate_token("valid.token.here")
+
+        assert result.authenticated is False
+        assert result.status_code == 401
 
 
 class TestOfflineTokenSupport:

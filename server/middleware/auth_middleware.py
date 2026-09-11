@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, Optional
 
 from starlette.responses import JSONResponse
 
+from utils.request_context import reset_user_context, set_user_context
 from server.middleware.oidc_auth import OIDCAuthenticator, OIDCConfig
 from utils.logger import get_logger
 
@@ -99,13 +100,15 @@ class AuthMiddleware:
             return
 
         # Add user info to scope for downstream handlers
-        scope["user"] = {
+        user_info = {
             "id": result.user_id,
             "username": result.username,
             "email": result.email,
             "groups": result.groups,
             "scopes": result.scopes,
         }
+        scope["user"] = user_info
+        context_token = set_user_context(user_info)
 
         self.logger.debug(
             f"Authenticated request from user: {result.username}",
@@ -116,7 +119,10 @@ class AuthMiddleware:
             },
         )
 
-        await self.app(scope, receive, send)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            reset_user_context(context_token)
 
 
 def create_auth_middleware(

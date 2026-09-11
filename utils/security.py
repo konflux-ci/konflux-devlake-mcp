@@ -6,8 +6,9 @@ Konflux DevLake MCP Server - Security Utility
 import re
 import secrets
 from datetime import datetime, timedelta
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
+from utils.request_context import is_current_user_admin
 from utils.logger import get_logger
 
 # Blocklist for identifier values passed as bound parameters.  Since the
@@ -111,25 +112,28 @@ class KonfluxDevLakeSecurityManager:
             raise ValueError(f"Invalid {field_name}: must be non-negative")
         return int_val
 
-    def is_table_denied(self, table_name: str, is_admin: bool = True) -> bool:
+    def is_table_denied(self, table_name: str, is_admin: Optional[bool] = None) -> bool:
         """Check whether access to a table should be denied.
 
         Access tiers:
         - DENY (always blocked): credentials, tokens, raw API blobs.
-        - ADMIN_ONLY: DevLake internal orchestration + vendor-specific _tool_* tables.
-          Currently allowed for everyone (is_admin defaults to True).
-        - ALLOW: normalized domain model tables (incidents, pull_requests, repos, ...).
+        - ADMIN_ONLY: DevLake internal orchestration (_devlake_*). Allowed only
+          for administrators during an authenticated request.
+        - ALLOW: normalized domain model tables (incidents, pull_requests,
+          repos, ...) and the _tool_* plugin layer behind them.
 
         Args:
             table_name: The table name to check (may include backticks).
-            is_admin: Whether the caller has admin privileges.
-                # TODO(RBAC): Change default to False once role-based access
-                # control is wired in. Currently True so all users can reach
-                # ADMIN_ONLY tables.
+            is_admin: Whether the caller has admin privileges. If omitted, the
+                value is read from the current request context, which fails
+                closed to non-administrator when no user is authenticated.
 
         Returns:
             True if the table is denied for the given role, False otherwise.
         """
+        if is_admin is None:
+            is_admin = is_current_user_admin()
+
         name = table_name.lower().strip("`").strip()
 
         # --- DENY tier: always blocked, regardless of role ---
@@ -140,36 +144,31 @@ class KonfluxDevLakeSecurityManager:
         if name.startswith("_raw_"):
             return True
 
-        # --- ADMIN_ONLY tier: internal orchestration + vendor tool tables ---
-        # TODO(RBAC): Once roles are wired in, remove ``is_admin=True`` default
-        # above and pass the real caller role. These tables will then be blocked
-        # for non-admin users. Categories (308 tables total):
-        #   - _devlake_* : blueprints, pipelines, tasks, migration_history,
-        #                   locking, notifications, subtasks, store, etc.
-        #   - _tool_*    : github, jira, gitlab, codecov, copilot, bitbucket,
-        #                   jenkins, sonarqube, slack, pagerduty, opsgenie,
-        #                   rootly, argocd, bamboo, circleci, trello, zentao,
-        #                   tapd, teambition, asana, azuredevops, gitee, feishu,
-        #                   taiga, testmo, q_dev, claude_code, agentready,
-        #                   aireview, ae, etc.
+        # --- ADMIN_ONLY tier: DevLake internal orchestration ---
+        # _devlake_* holds blueprints, pipelines, tasks, migration_history,
+        # locking, notifications,.
         if not is_admin:
             if name.startswith("_devlake_"):
-                return True
-            if name.startswith("_tool_"):
                 return True
 
         # --- ALLOW tier: normalized domain model tables ---
         return False
 
-    def extract_and_check_table_refs(self, query: str) -> None:
+    def extract_and_check_table_refs(self, query: str, is_admin: Optional[bool] = None) -> None:
         """Extract FROM/JOIN table references and reject blocked schemas or denied tables.
 
         Args:
             query: The SQL query string to inspect.
+            is_admin: Whether the caller has admin privileges. If omitted,
+                resolve it from the current request context, which fails closed
+                to non-administrator when no user is authenticated.
 
         Raises:
             ValueError: If the query references a blocked schema or denied table.
         """
+        if is_admin is None:
+            is_admin = is_current_user_admin()
+
         for match in _TABLE_REF_RE.finditer(query):
             if match.group(2):
                 schema = match.group(1).lower().strip("`")
@@ -178,7 +177,7 @@ class KonfluxDevLakeSecurityManager:
                     raise ValueError(f"Access to schema '{schema}' is not allowed")
             else:
                 table = match.group(1).lower().strip("`")
-            if self.is_table_denied(table):
+            if self.is_table_denied(table, is_admin=is_admin):
                 raise ValueError(f"Access to table '{table}' is denied")
 
     # Read-only statement prefixes allowed through validation.
@@ -213,7 +212,7 @@ class KonfluxDevLakeSecurityManager:
             if schema in _BLOCKED_SCHEMAS:
                 raise ValueError(f"Access to schema '{schema}' is not allowed")
 
-    def validate_sql_query(self, query: str) -> Tuple[bool, str]:
+    def validate_sql_query(self, query: str, is_admin: Optional[bool] = None) -> Tuple[bool, str]:
         """Validate a SQL query for security.
 
         Allows read-only statements (SELECT, SHOW DATABASES, SHOW TABLES,
@@ -260,7 +259,7 @@ class KonfluxDevLakeSecurityManager:
                 raise ValueError("SQL query too long")
 
             # Block queries that reference denied tables or non-lake schemas
-            self.extract_and_check_table_refs(query)
+            self.extract_and_check_table_refs(query, is_admin=is_admin)
 
             return True, "Query validation passed"
 
