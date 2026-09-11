@@ -65,7 +65,7 @@ class AuthResult:
     Attributes:
         authenticated: Whether authentication was successful
         user_id: The user ID from the token (sub claim)
-        username: The username from the token (preferred_username claim)
+        username: The LDAP user ID derived from the validated access-token sub claim
         email: The user's email from the token
         groups: List of groups the user belongs to
         scopes: List of scopes granted to the token
@@ -537,8 +537,25 @@ class OIDCAuthenticator:
 
             # Extract user information
             user_id = payload.get("sub")
-            username = payload.get("preferred_username") or payload.get("username")
             email = payload.get("email")
+
+            if not isinstance(user_id, str):
+                self.logger.warning("Validated access token does not contain a usable sub claim")
+                return AuthResult(
+                    authenticated=False,
+                    error="Validated access token does not contain a usable sub claim",
+                    status_code=401,
+                )
+
+            sub_parts = user_id.split(":")
+            if len(sub_parts) != 3 or sub_parts[0] != "f" or not all(sub_parts[1:]):
+                self.logger.warning("Validated access token sub claim has an invalid format")
+                return AuthResult(
+                    authenticated=False,
+                    error="Validated access token sub claim has an invalid format",
+                    status_code=401,
+                )
+            username = sub_parts[2]
 
             # Extract groups (Keycloak specific)
             groups = payload.get("groups", [])

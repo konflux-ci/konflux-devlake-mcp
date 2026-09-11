@@ -474,6 +474,15 @@ The server supports OIDC (OpenID Connect) authentication for securing MCP endpoi
 - Returns 401/403 responses for failed authentication
 - Adds user info to request scope for downstream handlers
 
+**LDAPService** (`utils/ldap_service.py`) and **AuthorizationService** (`utils/rbac.py`)
+- Derive the LDAP user ID from the final component of the validated exchanged access token's
+  `sub` claim, which must use the `f:<idp-id>:<username>` format
+- Map membership in `devlakemcpadmin` to `mcp-admin`
+- Map other authenticated users to `mcp-viewer`
+- Keep `execute_query` administrator-only
+- Cache LDAP group membership for a configurable TTL
+- Treat LDAP failures as non-admin; they must never grant administrator access
+
 #### Configuration
 
 ```python
@@ -507,6 +516,8 @@ The server supports two authentication modes:
 - Server exchanges offline token for access token via OIDC provider
 - Server caches access token and refreshes when needed
 - Server validates the access token
+- Server derives the LDAP user ID from the validated access token's `sub` final component
+- Server performs LDAP/Rover group lookup for RBAC
 
 ```
 Client Request
@@ -527,6 +538,10 @@ Client Request
     +-- Verify claims (iss, aud, exp)
     |
     +-- Check required scopes
+    |
+    +-- Extract username from validated access token
+    |
+    +-- LDAP lookup for devlakemcpadmin membership
     |
     v
 +-------------------+

@@ -157,6 +157,49 @@ spec:
                   name: konflux-mcp-config
                   key: OIDC_ACCESS_TOKEN_CACHE_BUFFER
                   optional: true
+            # IPA LDAP service account credentials for Rover-based RBAC
+            - name: LDAP_BIND_DN
+              valueFrom:
+                secretKeyRef:
+                  name: konflux-devlake-secrets
+                  key: LDAP_BIND_DN
+                  optional: true
+            - name: LDAP_BIND_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: konflux-devlake-secrets
+                  key: LDAP_BIND_PASSWORD
+                  optional: true
+            - name: LDAP_SERVER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: LDAP_SERVER_URL
+                  optional: true
+            - name: LDAP_BASE_DN
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: LDAP_BASE_DN
+                  optional: true
+            - name: LDAP_USER_BASE_DN
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: LDAP_USER_BASE_DN
+                  optional: true
+            - name: LDAP_CACHE_TTL
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: LDAP_CACHE_TTL
+                  optional: true
+            - name: LDAP_ADMIN_GROUP
+              valueFrom:
+                configMapKeyRef:
+                  name: konflux-mcp-config
+                  key: LDAP_ADMIN_GROUP
+                  optional: true
             # SSE/Long-lived connection timeouts (1 hour)
             - name: SERVER_TIMEOUT_KEEP_ALIVE
               value: "3600"

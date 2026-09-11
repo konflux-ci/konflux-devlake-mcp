@@ -14,7 +14,9 @@ from mcp.types import Tool, TextContent
 
 from server.handlers.tool_handler import ToolHandler
 from server.transport.base_transport import BaseTransport
+from utils.ldap_service import LDAPService
 from utils.logger import get_logger
+from utils.rbac import AuthorizationService
 
 
 class KonfluxDevLakeMCPServer:
@@ -41,11 +43,33 @@ class KonfluxDevLakeMCPServer:
         self.security_manager = security_manager
         self.logger = get_logger(f"{__name__}.KonfluxDevLakeMCPServer")
 
+        oidc_enabled = bool(getattr(getattr(config, "oidc", None), "enabled", False))
+        transport_type = str(getattr(getattr(config, "server", None), "transport", "")).lower()
+        # HTTP installs AuthMiddleware, which establishes the request-scoped
+        # identity required by RBAC. STDIO has no authentication layer, so
+        # enabling RBAC there would hide every tool and reject every call.
+        rbac_enabled = oidc_enabled and transport_type == "http"
+        if rbac_enabled:
+            self.logger.info("RBAC is enabled for OIDC-authenticated HTTP requests")
+            ldap_service = LDAPService(config.get_ldap_config())
+            self.authorization_service = AuthorizationService(ldap_service=ldap_service)
+        elif oidc_enabled:
+            self.logger.info(
+                f"RBAC is disabled for {transport_type or 'unknown'} transport because it "
+                "does not establish authenticated user context"
+            )
+            self.authorization_service = None
+        else:
+            self.logger.info("RBAC is disabled because OIDC authentication is disabled")
+            self.authorization_service = None
+
         # Initialize core components
         self.server = Server("konflux-devlake-mcp-server")
         self.tool_handler = ToolHandler(
             tools_manager,
             security_manager,
+            authorization_service=self.authorization_service,
+            rbac_enabled=rbac_enabled,
         )
 
         # Setup protocol handlers
@@ -60,6 +84,7 @@ class KonfluxDevLakeMCPServer:
             try:
                 self.logger.info("Handling tool list request")
                 tools = await self.tools_manager.list_tools()
+                tools = await self.tool_handler.filter_tools(tools)
                 self.logger.info(f"Returning {len(tools)} tools")
                 return tools
             except Exception as e:

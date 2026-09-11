@@ -96,6 +96,7 @@ class TestKonfluxDevLakeConfig:
         assert isinstance(config.database, DatabaseConfig)
         assert isinstance(config.server, ServerConfig)
         assert isinstance(config.logging, LoggingConfig)
+        assert config.ldap.admin_group == "devlakemcpadmin"
 
     def test_config_defaults(self):
         """Test KonfluxDevLakeConfig default values."""
@@ -198,6 +199,28 @@ class TestKonfluxDevLakeConfig:
         expected = {"transport": "http", "host": "test-host", "port": 8080}
 
         assert server_config == expected
+
+    def test_get_ldap_config(self):
+        """Test get_ldap_config method."""
+        with patch.dict(
+            os.environ,
+            {
+                "LDAP_SERVER_URL": "ldaps://ldap.example.test",
+                "LDAP_ADMIN_GROUP": "custom-admin",
+                "LDAP_CACHE_TTL": "120",
+                "LDAP_BIND_DN": "cn=svc,dc=example,dc=test",
+                "LDAP_BIND_PASSWORD": "secret",
+            },
+            clear=True,
+        ):
+            config = KonfluxDevLakeConfig()
+
+        ldap_config = config.get_ldap_config()
+        assert ldap_config["server_url"] == "ldaps://ldap.example.test"
+        assert ldap_config["admin_group"] == "custom-admin"
+        assert ldap_config["cache_ttl"] == 120
+        assert ldap_config["bind_dn"] == "cn=svc,dc=example,dc=test"
+        assert ldap_config["bind_password"] == "secret"
 
     def test_validate_valid_config(self):
         """Test validate method with valid configuration."""

@@ -7,13 +7,15 @@ data masking, and error handling.
 """
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from mcp.types import TextContent
 
 from utils.logger import get_logger
 from utils.db import DateTimeEncoder
 from utils.security import DataMasking
+from utils.rbac import AuthorizationService
+from utils.request_context import get_user_context, reset_user_context, set_user_context
 
 
 class ToolHandler:
@@ -28,6 +30,8 @@ class ToolHandler:
         self,
         tools_manager,
         security_manager,
+        authorization_service: Optional[AuthorizationService] = None,
+        rbac_enabled: bool = False,
     ):
         """
         Initialize the tool handler.
@@ -35,11 +39,17 @@ class ToolHandler:
         Args:
             tools_manager: Tools management system
             security_manager: Security validation system
+            authorization_service: RBAC service; built on demand when RBAC is on
+            rbac_enabled: Whether role-based access control is active
         """
         self.tools_manager = tools_manager
         self.security_manager = security_manager
         self.data_masking = DataMasking()
         self.logger = get_logger(f"{__name__}.ToolHandler")
+        # None means RBAC is off; every RBAC branch keys off this single value.
+        self.authorization_service = (
+            (authorization_service or AuthorizationService()) if rbac_enabled else None
+        )
 
     async def handle_tool_call(self, name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         """
@@ -55,18 +65,42 @@ class ToolHandler:
         try:
             self.logger.info(f"Handling tool call request: {name}")
 
-            # Perform security validation
-            validation_result = await self._validate_tool_request(name, arguments)
-            if not validation_result["valid"]:
-                return self._create_error_response(validation_result["error"])
+            context_token = None
+            if self.authorization_service:
+                user = get_user_context()
+                username = user.get("username") if user else None
+                if not username:
+                    return self._create_error_response("Access denied: authentication required")
+                authorization = await self.authorization_service.get_tool_authorization(
+                    name, username
+                )
+                if not authorization["authorized"]:
+                    return self._create_error_response(
+                        self.authorization_service.get_denied_reason(name)
+                    )
 
-            # Execute the tool
-            result = await self.tools_manager.call_tool(name, arguments)
+                # Make the resolved role available to all downstream SQL/table
+                # validation performed during this tool call.
+                request_user = dict(user)
+                request_user["is_admin"] = authorization["is_admin"]
+                context_token = set_user_context(request_user)
 
-            # Apply data masking to sensitive information
-            masked_result = self._mask_sensitive_data(result)
+            try:
+                # Perform security validation
+                validation_result = await self._validate_tool_request(name, arguments)
+                if not validation_result["valid"]:
+                    return self._create_error_response(validation_result["error"])
 
-            return [TextContent(type="text", text=masked_result)]
+                # Execute the tool
+                result = await self.tools_manager.call_tool(name, arguments)
+
+                # Apply data masking to sensitive information
+                masked_result = self._mask_sensitive_data(result)
+
+                return [TextContent(type="text", text=masked_result)]
+            finally:
+                if context_token is not None:
+                    reset_user_context(context_token)
 
         except Exception as e:
             self.logger.error(f"Failed to handle tool call request: {e}")
@@ -157,6 +191,21 @@ class ToolHandler:
                 }
 
         return {"valid": True}
+
+    async def filter_tools(self, tools: List[Any]) -> List[Any]:
+        """Filter an MCP tool list according to the current user's RBAC role."""
+        if not self.authorization_service:
+            return tools
+
+        user = get_user_context()
+        username = user.get("username") if user else None
+        if not username:
+            return []
+
+        allowed = await self.authorization_service.get_allowed_tools(username)
+        if "*" in allowed:
+            return tools
+        return [tool for tool in tools if tool.name in allowed]
 
     def _mask_sensitive_data(self, result: str) -> str:
         """

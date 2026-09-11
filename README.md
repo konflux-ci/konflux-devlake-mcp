@@ -129,6 +129,25 @@ Clients must include the `Authorization: Bearer <token>` header. The token can b
 - A JWT access token (validated directly)
 - An offline token (exchanged for access token when `OIDC_OFFLINE_TOKEN_ENABLED=true`)
 
+When OIDC is enabled, the server also enforces LDAP/Rover-based RBAC. The offline token is
+used only for token exchange; its claims are not used for identity or authorization. The
+The LDAP user ID is derived from the final component of the validated exchanged access token's
+`sub` claim, which must use the `f:<idp-id>:<username>` format. Members of `devlakemcpadmin` receive administrator
+access, while other authenticated users receive restricted access. The `execute_query` tool
+is administrator-only.
+
+| Environment Variable | Description | Default |
+|---------------------|-------------|---------|
+| `LDAP_SERVER_URL` | IPA LDAP server URL, or a comma-separated list of replicas to fail over between | the six `ldaps://s{1,2}.idm-001.prod.{us-east-1.aws,rdu2.dc,iad2.dc}.redhat.com` replicas |
+| `LDAP_BASE_DN` | LDAP base DN | `dc=ipa,dc=redhat,dc=com` |
+| `LDAP_USER_BASE_DN` | User search base DN | `cn=users,cn=accounts,dc=ipa,dc=redhat,dc=com` |
+| `LDAP_CACHE_TTL` | Group membership cache lifetime in seconds | `300` |
+| `LDAP_ADMIN_GROUP` | Rover group mapped to administrator access | `devlakemcpadmin` |
+| `LDAP_BIND_DN` | IPA LDAP service-account bind DN | - |
+| `LDAP_BIND_PASSWORD` | IPA LDAP service-account password | - |
+
+`LDAP_BIND_DN` and `LDAP_BIND_PASSWORD` should be provided through a Kubernetes Secret.
+
 ### Environment Variables (Alternative)
 
 ```bash

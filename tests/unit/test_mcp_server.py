@@ -44,9 +44,85 @@ class TestMCPServerInit:
         assert server.tools_manager is mock_tools_manager
         assert server.security_manager is mock_security_manager
 
+        assert server.authorization_service is None
         mock_tool_handler_cls.assert_called_once_with(
             mock_tools_manager,
             mock_security_manager,
+            authorization_service=None,
+            rbac_enabled=False,
+        )
+
+    @pytest.mark.asyncio
+    @patch("server.core.mcp_server.LDAPService")
+    @patch("server.core.mcp_server.Server")
+    async def test_oidc_enabled_stdio_keeps_tools_available_without_user_context(
+        self,
+        mock_server_cls,
+        mock_ldap_service_cls,
+        mock_config,
+        mock_db_connection,
+        mock_tools_manager,
+        mock_security_manager,
+    ):
+        """STDIO must remain usable because it has no middleware to authenticate users."""
+        mock_config.oidc.enabled = True
+        mock_config.server.transport = "stdio"
+        tool = Mock()
+        tool.name = "get_incidents"
+        mock_tools_manager.call_tool = AsyncMock(return_value='{"success": true}')
+
+        server = KonfluxDevLakeMCPServer(
+            config=mock_config,
+            db_connection=mock_db_connection,
+            tools_manager=mock_tools_manager,
+            security_manager=mock_security_manager,
+        )
+
+        visible_tools = await server.tool_handler.filter_tools([tool])
+        result = await server.tool_handler.handle_tool_call("get_incidents", {})
+
+        assert server.authorization_service is None
+        assert visible_tools == [tool]
+        assert "true" in result[0].text
+        mock_tools_manager.call_tool.assert_awaited_once_with("get_incidents", {})
+        mock_ldap_service_cls.assert_not_called()
+
+    @patch("server.core.mcp_server.ToolHandler")
+    @patch("server.core.mcp_server.AuthorizationService")
+    @patch("server.core.mcp_server.LDAPService")
+    @patch("server.core.mcp_server.Server")
+    def test_oidc_enabled_http_enables_rbac(
+        self,
+        mock_server_cls,
+        mock_ldap_service_cls,
+        mock_authorization_service_cls,
+        mock_tool_handler_cls,
+        mock_config,
+        mock_db_connection,
+        mock_tools_manager,
+        mock_security_manager,
+    ):
+        """HTTP keeps RBAC enabled because AuthMiddleware supplies user context."""
+        mock_config.oidc.enabled = True
+        mock_config.server.transport = "http"
+        ldap_service = mock_ldap_service_cls.return_value
+        authorization_service = mock_authorization_service_cls.return_value
+
+        server = KonfluxDevLakeMCPServer(
+            config=mock_config,
+            db_connection=mock_db_connection,
+            tools_manager=mock_tools_manager,
+            security_manager=mock_security_manager,
+        )
+
+        mock_ldap_service_cls.assert_called_once_with(mock_config.get_ldap_config())
+        mock_authorization_service_cls.assert_called_once_with(ldap_service=ldap_service)
+        assert server.authorization_service is authorization_service
+        mock_tool_handler_cls.assert_called_once_with(
+            mock_tools_manager,
+            mock_security_manager,
+            authorization_service=authorization_service,
+            rbac_enabled=True,
         )
 
 

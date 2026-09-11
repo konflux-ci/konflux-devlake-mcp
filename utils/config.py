@@ -5,6 +5,18 @@ Konflux DevLake MCP Server - Configuration Utility
 
 import os
 
+# IPA replicas as published in Red Hat IT's ldap.conf. ldap3 does not implement
+# the SRV-discovery form (ldap:///dc%3Dipa...) that OpenLDAP clients accept, so
+# the replicas are listed explicitly and the pool fails over between them.
+DEFAULT_LDAP_SERVERS = (
+    "ldaps://s1.idm-001.prod.us-east-1.aws.redhat.com",
+    "ldaps://s2.idm-001.prod.us-east-1.aws.redhat.com",
+    "ldaps://s1.idm-001.prod.rdu2.dc.redhat.com",
+    "ldaps://s2.idm-001.prod.rdu2.dc.redhat.com",
+    "ldaps://s1.idm-001.prod.iad2.dc.redhat.com",
+    "ldaps://s2.idm-001.prod.iad2.dc.redhat.com",
+)
+
 
 class DatabaseConfig:
     """Database configuration"""
@@ -98,6 +110,28 @@ class OIDCConfig:
         self.access_token_cache_buffer = access_token_cache_buffer
 
 
+class LDAPConfig:
+    """IPA LDAP configuration for Rover group lookups."""
+
+    def __init__(
+        self,
+        server_url=",".join(DEFAULT_LDAP_SERVERS),
+        base_dn="dc=ipa,dc=redhat,dc=com",
+        user_base_dn="cn=users,cn=accounts,dc=ipa,dc=redhat,dc=com",
+        cache_ttl=300,
+        admin_group="devlakemcpadmin",
+        bind_dn="",
+        bind_password="",
+    ):
+        self.server_url = server_url
+        self.base_dn = base_dn
+        self.user_base_dn = user_base_dn
+        self.cache_ttl = cache_ttl
+        self.admin_group = admin_group
+        self.bind_dn = bind_dn
+        self.bind_password = bind_password
+
+
 class KonfluxDevLakeConfig:
     """Konflux DevLake MCP Server Configuration"""
 
@@ -106,6 +140,7 @@ class KonfluxDevLakeConfig:
         self.server = ServerConfig()
         self.logging = LoggingConfig()
         self.oidc = OIDCConfig()
+        self.ldap = LDAPConfig()
         self._load_from_env()
 
     def _load_from_env(self):
@@ -180,6 +215,15 @@ class KonfluxDevLakeConfig:
             os.getenv("OIDC_ACCESS_TOKEN_CACHE_BUFFER", str(self.oidc.access_token_cache_buffer))
         )
 
+        # IPA LDAP/Rover RBAC configuration
+        self.ldap.server_url = os.getenv("LDAP_SERVER_URL", self.ldap.server_url)
+        self.ldap.base_dn = os.getenv("LDAP_BASE_DN", self.ldap.base_dn)
+        self.ldap.user_base_dn = os.getenv("LDAP_USER_BASE_DN", self.ldap.user_base_dn)
+        self.ldap.cache_ttl = int(os.getenv("LDAP_CACHE_TTL", str(self.ldap.cache_ttl)))
+        self.ldap.admin_group = os.getenv("LDAP_ADMIN_GROUP", self.ldap.admin_group)
+        self.ldap.bind_dn = os.getenv("LDAP_BIND_DN", self.ldap.bind_dn)
+        self.ldap.bind_password = os.getenv("LDAP_BIND_PASSWORD", self.ldap.bind_password)
+
     def get_database_config(self) -> dict:
         """Get database configuration as dictionary"""
         return {
@@ -219,6 +263,18 @@ class KonfluxDevLakeConfig:
             "offline_token_enabled": self.oidc.offline_token_enabled,
             "token_exchange_client_id": self.oidc.token_exchange_client_id,
             "access_token_cache_buffer": self.oidc.access_token_cache_buffer,
+        }
+
+    def get_ldap_config(self) -> dict:
+        """Get LDAP configuration as a dictionary."""
+        return {
+            "server_url": self.ldap.server_url,
+            "base_dn": self.ldap.base_dn,
+            "user_base_dn": self.ldap.user_base_dn,
+            "cache_ttl": self.ldap.cache_ttl,
+            "admin_group": self.ldap.admin_group,
+            "bind_dn": self.ldap.bind_dn,
+            "bind_password": self.ldap.bind_password,
         }
 
     def validate(self) -> bool:

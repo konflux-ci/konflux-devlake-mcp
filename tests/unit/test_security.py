@@ -14,6 +14,7 @@ from utils.security import (
     KonfluxDevLakeSecurityManager,
     DataMasking,
 )
+from utils.request_context import reset_user_context, set_user_context
 
 
 @pytest.fixture
@@ -240,40 +241,69 @@ class TestIsTableDenied:
         assert sec_mgr.is_table_denied("_Raw_GitHub_Api_Issues") is True
         assert sec_mgr.is_table_denied("_Tool_GitHub_CONNECTIONS") is True
 
-    def test_admin_only_tables_allowed_by_default(self, sec_mgr):
-        """Test that _devlake_* and _tool_* tables are allowed with default is_admin=True."""
+    def test_admin_only_tables_allowed_for_admin(self, sec_mgr):
+        """Test that _devlake_* tables are reachable for an explicit admin."""
         admin_only_tables = [
             "_devlake_blueprints",
             "_devlake_pipelines",
             "_devlake_tasks",
-            "_tool_github_repos",
-            "_tool_jira_issues",
-            "_tool_codecov_coverages",
         ]
         for table in admin_only_tables:
             assert (
-                sec_mgr.is_table_denied(table) is False
-            ), f"{table} should be allowed (is_admin=True)"
+                sec_mgr.is_table_denied(table, is_admin=True) is False
+            ), f"{table} should be allowed for an admin"
+
+    def test_admin_only_tables_denied_without_request_context(self, sec_mgr):
+        """Test that role resolution fails closed when no user is authenticated."""
+        for table in ["_devlake_blueprints", "_devlake_pipelines", "_devlake_tasks"]:
+            assert sec_mgr.is_table_denied(table) is True, f"{table} should fail closed"
+
+    def test_tool_tables_are_not_admin_only(self, sec_mgr):
+        """Test that the _tool_* plugin layer is readable by non-admins.
+
+        Credentials live in *_connections and _devlake_api_keys, which the DENY
+        tier blocks first, and the remaining fields are already served by
+        ALLOW-tier domain tables.
+        """
+        for table in [
+            "_tool_github_repos",
+            "_tool_jira_issues",
+            "_tool_codecov_coverages",
+            "_tool_aireview_reviews",
+            "_tool_agentready_findings",
+        ]:
+            assert (
+                sec_mgr.is_table_denied(table, is_admin=False) is False
+            ), f"{table} should be allowed for non-admins"
+
+    def test_tool_connections_still_denied_for_admin(self, sec_mgr):
+        """Test that credential-bearing _tool_*_connections stay blocked for everyone."""
+        for table in ["_tool_github_connections", "_tool_jira_connections"]:
+            assert sec_mgr.is_table_denied(table, is_admin=True) is True
 
     def test_admin_only_tables_denied_for_non_admin(self, sec_mgr):
-        """Test that _devlake_* and _tool_* tables are denied when is_admin=False."""
-        # TODO(RBAC): This path activates once the default is flipped to False.
+        """Test that _devlake_* tables are denied when is_admin=False."""
         admin_only_tables = [
             "_devlake_blueprints",
             "_devlake_pipelines",
             "_devlake_tasks",
             "_devlake_migration_history",
             "_devlake_subtasks",
-            "_tool_github_repos",
-            "_tool_jira_issues",
-            "_tool_gitlab_projects",
-            "_tool_codecov_coverages",
-            "_tool_copilot_seats",
         ]
         for table in admin_only_tables:
             assert (
                 sec_mgr.is_table_denied(table, is_admin=False) is True
             ), f"{table} should be denied for non-admin"
+
+    def test_admin_only_tables_use_request_role_when_omitted(self, sec_mgr):
+        """Test that omitted role information comes from request context."""
+        context_token = set_user_context({"is_admin": False})
+        try:
+            assert sec_mgr.is_table_denied("_devlake_pipelines") is True
+            assert sec_mgr.is_table_denied("_tool_github_repos") is False
+            assert sec_mgr.is_table_denied("incidents") is False
+        finally:
+            reset_user_context(context_token)
 
     def test_deny_tier_blocked_regardless_of_role(self, sec_mgr):
         """Test that DENY tier tables are blocked even for admins."""
@@ -455,6 +485,19 @@ class TestValidateSqlQueryTableBlocking:
             "SELECT * FROM lake.incidents WHERE status = 'DONE'"
         )
         assert is_valid is True
+
+    def test_non_admin_sql_cannot_read_admin_only_tables(self, security_manager):
+        """Test that request-scoped non-admin users cannot read internal tables."""
+        context_token = set_user_context({"is_admin": False})
+        try:
+            is_valid, msg = security_manager.validate_sql_query(
+                "SELECT * FROM lake._devlake_pipelines"
+            )
+        finally:
+            reset_user_context(context_token)
+
+        assert is_valid is False
+        assert "_devlake_pipelines" in msg
 
 
 @pytest.mark.unit
