@@ -33,6 +33,12 @@ ignore:
   - "docs/"
   - "k8s/"
   - "testdata/"
+  - ".agents/**"
+  - ".claude/**"
+  - ".cursor/**"
+  - "skills/**"
+  - "*.md"
+  - "*.toml"
 
 comment:
   layout: "reach,diff,flags,files,footer"
