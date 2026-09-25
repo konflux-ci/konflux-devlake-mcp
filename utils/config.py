@@ -122,6 +122,8 @@ class LDAPConfig:
         admin_group="devlakemcpadmin",
         bind_dn="",
         bind_password="",
+        connect_timeout=5,
+        response_timeout=10,
     ):
         self.server_url = server_url
         self.base_dn = base_dn
@@ -130,6 +132,8 @@ class LDAPConfig:
         self.admin_group = admin_group
         self.bind_dn = bind_dn
         self.bind_password = bind_password
+        self.connect_timeout = connect_timeout
+        self.response_timeout = response_timeout
 
 
 class KonfluxDevLakeConfig:
@@ -223,6 +227,12 @@ class KonfluxDevLakeConfig:
         self.ldap.admin_group = os.getenv("LDAP_ADMIN_GROUP", self.ldap.admin_group)
         self.ldap.bind_dn = os.getenv("LDAP_BIND_DN", self.ldap.bind_dn)
         self.ldap.bind_password = os.getenv("LDAP_BIND_PASSWORD", self.ldap.bind_password)
+        self.ldap.connect_timeout = int(
+            os.getenv("LDAP_CONNECT_TIMEOUT", str(self.ldap.connect_timeout))
+        )
+        self.ldap.response_timeout = int(
+            os.getenv("LDAP_RESPONSE_TIMEOUT", str(self.ldap.response_timeout))
+        )
 
     def get_database_config(self) -> dict:
         """Get database configuration as dictionary"""
@@ -275,6 +285,8 @@ class KonfluxDevLakeConfig:
             "admin_group": self.ldap.admin_group,
             "bind_dn": self.ldap.bind_dn,
             "bind_password": self.ldap.bind_password,
+            "connect_timeout": self.ldap.connect_timeout,
+            "response_timeout": self.ldap.response_timeout,
         }
 
     def validate(self) -> bool:

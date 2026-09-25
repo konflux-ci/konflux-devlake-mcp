@@ -145,6 +145,8 @@ is administrator-only.
 | `LDAP_ADMIN_GROUP` | Rover group mapped to administrator access | `devlakemcpadmin` |
 | `LDAP_BIND_DN` | IPA LDAP service-account bind DN | - |
 | `LDAP_BIND_PASSWORD` | IPA LDAP service-account password | - |
+| `LDAP_CONNECT_TIMEOUT` | Seconds to wait for a replica to accept a connection before failing over | `5` |
+| `LDAP_RESPONSE_TIMEOUT` | Seconds to wait for a bind or search response | `10` |
 
 `LDAP_BIND_DN` and `LDAP_BIND_PASSWORD` should be provided through a Kubernetes Secret.
 

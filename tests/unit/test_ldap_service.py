@@ -8,7 +8,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from utils.ldap_service import LDAPGroupCache, LDAPService
+from utils.ldap_service import (
+    LDAPBindError,
+    LDAPGroupCache,
+    LDAPResponseTimeoutError,
+    LDAPServerPoolExhaustedError,
+    LDAPService,
+)
 
 
 @pytest.mark.unit
@@ -114,6 +120,24 @@ class TestLDAPService:
 
     @patch("utils.ldap_service.Connection")
     @patch("utils.ldap_service.Server")
+    def test_email_style_username_is_searched_as_bare_uid(
+        self, mock_server, mock_connection, service
+    ):
+        """IPA indexes users by short login, so an SSO email must still match."""
+        entry = MagicMock()
+        entry.memberOf.values = ["cn=devlakemcpadmin,cn=groups,dc=example,dc=test"]
+        connection = MagicMock()
+        connection.entries = [entry]
+        mock_connection.return_value = connection
+
+        assert service.is_admin("alice@example.test") is True
+        assert connection.search.call_args.kwargs["search_filter"] == "(uid=alice)"
+        # Both spellings of the account resolve through the same cache entry.
+        assert service.get_user_groups("alice") == {"devlakemcpadmin"}
+        assert connection.search.call_count == 1
+
+    @patch("utils.ldap_service.Connection")
+    @patch("utils.ldap_service.Server")
     def test_ldap_failure_returns_no_groups_with_exception_context(
         self, mock_server, mock_connection, service, caplog
     ):
@@ -126,7 +150,7 @@ class TestLDAPService:
         error_record = next(
             record
             for record in caplog.records
-            if "Unexpected LDAP error for 'alice'" in record.getMessage()
+            if "LDAP lookup for uid 'alice': UNEXPECTED_ERROR" in record.getMessage()
         )
         assert error_record.exc_info is not None
         assert error_record.exc_info[0] is RuntimeError
@@ -145,7 +169,74 @@ class TestLDAPService:
             groups = service.get_user_groups("nosuchuser")
 
         assert groups == set()
-        assert "matched no entry for uid 'nosuchuser'" in caplog.text
+        assert "LDAP lookup for uid 'nosuchuser': NO_SUCH_UID" in caplog.text
+
+    @patch("utils.ldap_service.Connection")
+    @patch("utils.ldap_service.Server")
+    def test_unreachable_ldap_is_distinguishable_from_a_denial(
+        self, mock_server, mock_connection, service, caplog
+    ):
+        """An outage must not read like a user who is simply not an admin."""
+        mock_connection.side_effect = LDAPResponseTimeoutError("no response")
+
+        with caplog.at_level("WARNING"):
+            assert service.is_admin("alice") is False
+
+        assert "LDAP lookup for uid 'alice': UNREACHABLE" in caplog.text
+        assert "LDAPResponseTimeoutError" in caplog.text
+        assert "NOT_ADMIN" not in caplog.text
+        assert "NO_SUCH_UID" not in caplog.text
+
+    @patch("utils.ldap_service.Connection")
+    @patch("utils.ldap_service.Server")
+    def test_exhausted_server_pool_is_reported_as_unreachable(
+        self, mock_server, mock_connection, service, caplog
+    ):
+        """A pool that has benched every replica is an outage, not a generic error."""
+        mock_connection.side_effect = LDAPServerPoolExhaustedError("no active server")
+
+        with caplog.at_level("WARNING"):
+            assert service.is_admin("alice") is False
+
+        assert "LDAP lookup for uid 'alice': UNREACHABLE" in caplog.text
+
+    @patch("utils.ldap_service.Connection")
+    @patch("utils.ldap_service.Server")
+    def test_bind_rejection_names_the_service_account(
+        self, mock_server, mock_connection, service, caplog
+    ):
+        mock_connection.side_effect = LDAPBindError("invalid credentials")
+
+        with caplog.at_level("WARNING"):
+            assert service.is_admin("alice") is False
+
+        assert "LDAP lookup for uid 'alice': BIND_REJECTED" in caplog.text
+        assert service.bind_dn in caplog.text
+        assert service.bind_password not in caplog.text
+
+    @patch("utils.ldap_service.Connection")
+    @patch("utils.ldap_service.Server")
+    def test_known_user_outside_the_admin_group_is_logged_as_not_admin(
+        self, mock_server, mock_connection, service, caplog
+    ):
+        entry = MagicMock()
+        entry.memberOf.values = ["cn=team-a,cn=groups,dc=example,dc=test"]
+        connection = MagicMock()
+        connection.entries = [entry]
+        mock_connection.return_value = connection
+
+        with caplog.at_level("INFO"):
+            assert service.is_admin("alice") is False
+
+        assert "LDAP lookup for uid 'alice': NOT_ADMIN" in caplog.text
+
+    def test_timeouts_are_applied_to_the_connection(self, service):
+        ldap3 = pytest.importorskip("ldap3")
+
+        server = service._build_server()
+
+        assert isinstance(server, ldap3.Server)
+        assert server.connect_timeout == service.connect_timeout
 
     def test_concurrent_lookup_cannot_overwrite_successful_admin_result(self, service):
         """Only one cache-miss lookup may run for a user at a time."""

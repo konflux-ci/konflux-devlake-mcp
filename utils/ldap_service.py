@@ -10,7 +10,13 @@ from utils.logger import get_logger
 
 try:
     from ldap3 import ALL, ROUND_ROBIN, SIMPLE, SUBTREE, Connection, Server, ServerPool
-    from ldap3.core.exceptions import LDAPException
+    from ldap3.core.exceptions import (
+        LDAPBindError,
+        LDAPCommunicationError,
+        LDAPException,
+        LDAPResponseTimeoutError,
+        LDAPServerPoolExhaustedError,
+    )
     from ldap3.utils.conv import escape_filter_chars
 except ImportError:  # pragma: no cover - exercised only when dependency is absent
     ALL = SIMPLE = SUBTREE = ROUND_ROBIN = None
@@ -18,6 +24,18 @@ except ImportError:  # pragma: no cover - exercised only when dependency is abse
 
     class LDAPException(Exception):
         """Fallback exception when ldap3 is not installed."""
+
+    class LDAPCommunicationError(LDAPException):
+        """Fallback socket-level exception when ldap3 is not installed."""
+
+    class LDAPResponseTimeoutError(LDAPException):
+        """Fallback timeout exception when ldap3 is not installed."""
+
+    class LDAPBindError(LDAPException):
+        """Fallback bind exception when ldap3 is not installed."""
+
+    class LDAPServerPoolExhaustedError(LDAPException):
+        """Fallback pool-exhausted exception when ldap3 is not installed."""
 
     def escape_filter_chars(value: str) -> str:
         """Fallback LDAP escaping implementation."""
@@ -33,6 +51,16 @@ except ImportError:  # pragma: no cover - exercised only when dependency is abse
 # Seconds an unreachable replica stays benched before the pool retries it.
 LDAP_POOL_EXHAUST_SECONDS = 60
 LDAP_LOOKUP_LOCK_STRIPES = 64
+
+
+def to_uid(username: str) -> str:
+    """Return the IPA uid for an SSO username.
+
+    Some SSO accounts carry an email address as their username while IPA indexes
+    users by the bare short login, so any domain suffix is dropped before the
+    lookup.
+    """
+    return username.split("@", 1)[0]
 
 
 class LDAPGroupCache:
@@ -84,6 +112,8 @@ class LDAPService:
         self.admin_group = str(settings["admin_group"])
         self.bind_dn = str(settings["bind_dn"])
         self.bind_password = str(settings["bind_password"])
+        self.connect_timeout = int(settings["connect_timeout"])
+        self.response_timeout = int(settings["response_timeout"])
         self._cache = LDAPGroupCache(int(settings["cache_ttl"]))
         # A bounded set of locks prevents duplicate concurrent lookups for the
         # same user without retaining one lock for every username ever seen.
@@ -103,17 +133,26 @@ class LDAPService:
         """
         hosts = [host.strip() for host in self.server_url.split(",") if host.strip()]
         if len(hosts) <= 1:
-            return Server(hosts[0] if hosts else self.server_url, get_info=ALL)
+            return Server(
+                hosts[0] if hosts else self.server_url,
+                get_info=ALL,
+                connect_timeout=self.connect_timeout,
+            )
 
         return ServerPool(
-            [Server(host, get_info=ALL) for host in hosts],
+            [Server(host, get_info=ALL, connect_timeout=self.connect_timeout) for host in hosts],
             ROUND_ROBIN,
             active=len(hosts),
             exhaust=LDAP_POOL_EXHAUST_SECONDS,
         )
 
     def get_user_groups(self, username: str) -> Set[str]:
-        """Return groups for a username, using a short-lived cache."""
+        """Return groups for a username, using a short-lived cache.
+
+        The username is normalized to an IPA uid first, so both spellings of an
+        account share one lookup and one cache entry.
+        """
+        username = to_uid(username)
         cached = self._cache.get(username)
         if cached is not None:
             return cached
@@ -129,6 +168,24 @@ class LDAPService:
             groups = self._query_ldap_groups(username)
             self._cache.set(username, groups)
             return groups
+
+    def _log_membership_outcome(self, username: str, groups: Set[str]) -> None:
+        """Log the authorization outcome for a user IPA actually knows about.
+
+        Logged here rather than in is_admin so there is one line per real lookup
+        instead of one per request served from the cache.
+        """
+        if self.admin_group.lower() in {group.lower() for group in groups}:
+            self.logger.info(
+                "LDAP lookup for uid '%s': ADMIN via group '%s'", username, self.admin_group
+            )
+        else:
+            self.logger.info(
+                "LDAP lookup for uid '%s': NOT_ADMIN, resolved %d group(s) but not '%s'",
+                username,
+                len(groups),
+                self.admin_group,
+            )
 
     def _query_ldap_groups(self, username: str) -> Set[str]:
         """Query IPA LDAP using the configured service account."""
@@ -150,6 +207,7 @@ class LDAPService:
                 password=self.bind_password,
                 authentication=SIMPLE,
                 auto_bind=True,
+                receive_timeout=self.response_timeout,
             )
             search_filter = f"(uid={escape_filter_chars(username)})"
             conn.search(
@@ -164,17 +222,58 @@ class LDAPService:
                 for member_of in getattr(entry, "memberOf", []).values:
                     if isinstance(member_of, str) and member_of.lower().startswith("cn="):
                         groups.add(member_of.split(",", 1)[0][3:])
+                self._log_membership_outcome(username, groups)
             else:
                 self.logger.warning(
-                    "LDAP search matched no entry for uid '%s' under %s; "
-                    "treating the user as having no groups (admin access denied)",
+                    "LDAP lookup for uid '%s': NO_SUCH_UID under %s; the SSO username does "
+                    "not match any IPA account, so admin access is denied",
                     username,
                     self.user_base_dn,
                 )
+        # A pool raises LDAPServerPoolExhaustedError rather than a socket error once
+        # every replica has been probed and benched, so it belongs here too.
+        except (
+            LDAPCommunicationError,
+            LDAPResponseTimeoutError,
+            LDAPServerPoolExhaustedError,
+        ) as exc:
+            self.logger.error(
+                "LDAP lookup for uid '%s': UNREACHABLE after connect_timeout=%ss "
+                "response_timeout=%ss (%s: %s); group membership is unknown and admin "
+                "access is denied for this lookup, which is an LDAP outage and not a "
+                "decision about the user",
+                username,
+                self.connect_timeout,
+                self.response_timeout,
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+        except LDAPBindError as exc:
+            self.logger.error(
+                "LDAP lookup for uid '%s': BIND_REJECTED for service account '%s' (%s); "
+                "every admin lookup fails until these credentials are fixed",
+                username,
+                self.bind_dn,
+                exc,
+                exc_info=True,
+            )
         except LDAPException as exc:
-            self.logger.error("LDAP query failed for '%s': %s", username, exc, exc_info=True)
+            self.logger.error(
+                "LDAP lookup for uid '%s': FAILED (%s: %s)",
+                username,
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
         except Exception as exc:
-            self.logger.error("Unexpected LDAP error for '%s': %s", username, exc, exc_info=True)
+            self.logger.error(
+                "LDAP lookup for uid '%s': UNEXPECTED_ERROR (%s: %s)",
+                username,
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
         finally:
             if conn is not None:
                 try:
