@@ -254,16 +254,6 @@ spec:
             - 0.0.0.0
             - --port
             - "3000"
-            - --db-host
-            - $(DB_HOST)
-            - --db-port
-            - $(DB_PORT)
-            - --db-user
-            - $(DB_USER)
-            - --db-password
-            - $(DB_PASSWORD)
-            - --db-database
-            - $(DB_DATABASE)
             - --log-level
             - $(LOG_LEVEL)
           volumeMounts:
