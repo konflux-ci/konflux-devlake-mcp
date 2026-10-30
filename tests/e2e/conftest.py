@@ -163,16 +163,6 @@ async def mcp_client(db_env):
             "stdio",
             "--log-level",
             os.environ.get("LOG_LEVEL", "ERROR"),
-            "--db-host",
-            db_env["DB_HOST"],
-            "--db-port",
-            db_env["DB_PORT"],
-            "--db-user",
-            db_env["DB_USER"],
-            "--db-password",
-            db_env["DB_PASSWORD"],
-            "--db-database",
-            db_env["DB_DATABASE"],
         ]
     else:
         command = server_path
@@ -181,16 +171,6 @@ async def mcp_client(db_env):
             "stdio",
             "--log-level",
             os.environ.get("LOG_LEVEL", "ERROR"),
-            "--db-host",
-            db_env["DB_HOST"],
-            "--db-port",
-            db_env["DB_PORT"],
-            "--db-user",
-            db_env["DB_USER"],
-            "--db-password",
-            db_env["DB_PASSWORD"],
-            "--db-database",
-            db_env["DB_DATABASE"],
         ]
 
     env = dict(db_env)

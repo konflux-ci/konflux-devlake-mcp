@@ -106,8 +106,8 @@ Examples:
         "--db-password",
         type=str,
         default="",
-        help="Database password for authentication (default: empty). "
-        "For security, consider using environment variables or config files",
+        help="Deprecated: exposes the password in the process command line. "
+        "Set DB_PASSWORD from a secret instead; that variable takes precedence",
     )
     parser.add_argument(
         "--db-database",
@@ -143,11 +143,21 @@ def create_config(args: argparse.Namespace) -> KonfluxDevLakeConfig:
     """
     config = KonfluxDevLakeConfig()
 
-    config.database.host = args.db_host
-    config.database.port = args.db_port
-    config.database.user = args.db_user
-    config.database.password = args.db_password
-    config.database.database = args.db_database
+    if not os.getenv("DB_HOST"):
+        config.database.host = args.db_host
+    if not os.getenv("DB_PORT"):
+        config.database.port = args.db_port
+    if not os.getenv("DB_USER"):
+        config.database.user = args.db_user
+    if not os.getenv("DB_DATABASE"):
+        config.database.database = args.db_database
+    if args.db_password:
+        logging.getLogger(__name__).warning(
+            "--db-password is deprecated because it exposes the secret in the "
+            "process command line; set DB_PASSWORD instead"
+        )
+        if not os.getenv("DB_PASSWORD"):
+            config.database.password = args.db_password
 
     config.server.transport = args.transport
     config.server.host = args.host
@@ -166,10 +176,10 @@ def validate_config(config: KonfluxDevLakeConfig) -> bool:
     logger = get_logger(__name__)
 
     if not config.database.host:
-        logger.error("Database host is required - specify with --db-host")
+        logger.error("Database host is required - specify with DB_HOST")
         return False
     if not config.database.user:
-        logger.error("Database user is required - specify with --db-user")
+        logger.error("Database user is required - specify with DB_USER")
         return False
 
     logger.info("Configuration validation passed")
