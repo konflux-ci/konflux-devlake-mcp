@@ -479,6 +479,22 @@ class TestValidateSqlQueryTableBlocking:
         assert is_valid is False
         assert "mysql" in msg
 
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "SELECT * FROM lake . _devlake_api_keys",
+            "SELECT * FROM `lake` . `_devlake_api_keys`",
+            "SELECT * FROM lake\n# comment\n._devlake_api_keys",
+            "SELECT user FROM mysql . user",
+            "SELECT * FROM (lake . _raw_github_api_pull_requests)",
+            "DESCRIBE lake . _devlake_api_keys",
+        ],
+    )
+    def test_blocks_spaced_schema_qualifier(self, security_manager, query):
+        """Schema/table qualifiers separated by whitespace must still be denied."""
+        is_valid, msg = security_manager.validate_sql_query(query)
+        assert is_valid is False, f"Query should be blocked: {query}"
+
     def test_allows_normal_lake_select(self, security_manager):
         """Test that normal lake SELECT queries still pass."""
         is_valid, msg = security_manager.validate_sql_query(

@@ -25,11 +25,18 @@ _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$")
 # Also REVOKE at the MySQL grant level as a separate hardening step.
 _BLOCKED_SCHEMAS = ("mysql", "information_schema", "performance_schema", "sys")
 
+# Schema that holds the DevLake domain model.  Only the configured database
+# may be used as a table qualifier; unqualified names resolve to it.
+_DEFAULT_ALLOWED_SCHEMA = "lake"
+
 # Extracts schema.table or bare table references after FROM, JOIN, a comma
-# (for comma-separated table lists), or DESCRIBE/DESC/SHOW TABLES FROM.
+# (for comma-separated table lists), DESCRIBE/DESC/EXPLAIN, or an opening
+# parenthesis in a table list.  MySQL accepts whitespace (including newlines)
+# around the qualifying dot and parenthesised table references, so those forms
+# are normalised here instead of being left to the database parser.
 # group(1) = schema or bare table, group(2) = table when schema is present.
 _TABLE_REF_RE = re.compile(
-    r"(?:FROM|JOIN|,|DESCRIBE|DESC)\s+`?(\w+)`?(?:\.`?(\w+)`?)?",
+    r"(?:FROM|JOIN|,|DESCRIBE|DESC|EXPLAIN)\s*\(*\s*`?(\w+)`?(?:\s*\.\s*`?(\w+)`?)?",
     re.IGNORECASE,
 )
 
@@ -169,16 +176,30 @@ class KonfluxDevLakeSecurityManager:
         if is_admin is None:
             is_admin = is_current_user_admin()
 
+        allowed_schemas = self._allowed_schemas()
         for match in _TABLE_REF_RE.finditer(query):
             if match.group(2):
                 schema = match.group(1).lower().strip("`")
                 table = match.group(2).lower().strip("`")
-                if schema in _BLOCKED_SCHEMAS:
+                if schema in _BLOCKED_SCHEMAS or schema not in allowed_schemas:
                     raise ValueError(f"Access to schema '{schema}' is not allowed")
             else:
                 table = match.group(1).lower().strip("`")
             if self.is_table_denied(table, is_admin=is_admin):
                 raise ValueError(f"Access to table '{table}' is denied")
+
+    def _allowed_schemas(self) -> Tuple[str, ...]:
+        """Return the table qualifiers a query may reference.
+
+        The configured database name; unqualified table names resolve to the
+        connection's default database.  Falls back to ``lake`` when the
+        configuration does not carry a usable database name.
+        """
+        database = getattr(self.config, "database", None)
+        name = getattr(database, "database", None)
+        if isinstance(name, str) and name:
+            return (name.lower(),)
+        return (_DEFAULT_ALLOWED_SCHEMA,)
 
     # Read-only statement prefixes allowed through validation.
     # "with" covers CTE queries (WITH ... AS (...) SELECT ...).
@@ -196,7 +217,7 @@ class KonfluxDevLakeSecurityManager:
         """Validate a SHOW statement against the safe subcommand allowlist.
 
         Only SHOW DATABASES and SHOW TABLES [FROM <schema>] are permitted.
-        For SHOW TABLES FROM, the schema is checked against _BLOCKED_SCHEMAS.
+        For SHOW TABLES FROM, the schema is checked against the allowed schemas.
 
         Args:
             query_lower: The lowercased, stripped query string.
@@ -209,7 +230,7 @@ class KonfluxDevLakeSecurityManager:
         m = self._SHOW_TABLES_FROM_RE.match(query_lower)
         if m:
             schema = m.group(1).lower().strip("`")
-            if schema in _BLOCKED_SCHEMAS:
+            if schema in _BLOCKED_SCHEMAS or schema not in self._allowed_schemas():
                 raise ValueError(f"Access to schema '{schema}' is not allowed")
 
     def validate_sql_query(self, query: str, is_admin: Optional[bool] = None) -> Tuple[bool, str]:
@@ -242,6 +263,7 @@ class KonfluxDevLakeSecurityManager:
             unsupported_patterns = [
                 r";",  # Multiple statements
                 r"--",  # SQL comments
+                r"#",  # MySQL line comments
                 r"/\*.*?\*/",  # Multi-line comments
                 r"\bload_file\b",  # MYSQL file read operations
                 r"\binto\s+(outfile|dumpfile)\b",  # MYSQL file write operations
