@@ -6,7 +6,7 @@ Konflux DevLake MCP Server - Security Utility
 import re
 import secrets
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Iterator, Optional, Tuple
 
 from utils.request_context import is_current_user_admin
 from utils.logger import get_logger
@@ -29,16 +29,141 @@ _BLOCKED_SCHEMAS = ("mysql", "information_schema", "performance_schema", "sys")
 # may be used as a table qualifier; unqualified names resolve to it.
 _DEFAULT_ALLOWED_SCHEMA = "lake"
 
-# Extracts schema.table or bare table references after FROM, JOIN, a comma
-# (for comma-separated table lists), DESCRIBE/DESC/EXPLAIN, or an opening
-# parenthesis in a table list.  MySQL accepts whitespace (including newlines)
-# around the qualifying dot and parenthesised table references, so those forms
-# are normalised here instead of being left to the database parser.
-# group(1) = schema or bare table, group(2) = table when schema is present.
-_TABLE_REF_RE = re.compile(
-    r"(?:FROM|JOIN|,|DESCRIBE|DESC|EXPLAIN)\s*\(*\s*`?(\w+)`?(?:\s*\.\s*`?(\w+)`?)?",
-    re.IGNORECASE,
+# Tokenizes just enough SQL to find table references without treating commas
+# in SELECT lists or function calls as table-list separators.
+_SQL_TOKEN_RE = re.compile(
+    r"""
+    (?P<string>'(?:''|\\.|[^'\\])*'|"(?:""|\\.|[^"\\])*")
+    |(?P<quoted>`(?:``|[^`])*`)
+    |(?P<identifier>[\w$]+)
+    |(?P<dot>\.)
+    |(?P<comma>,)
+    |(?P<lparen>\()
+    |(?P<rparen>\))
+    |(?P<other>[^\s])
+    """,
+    re.VERBOSE | re.DOTALL,
 )
+
+_TABLE_REF_KEYWORDS = frozenset({"from", "join", "straight_join"})
+_DESCRIBE_KEYWORDS = frozenset({"describe", "desc", "explain"})
+_FROM_CLAUSE_END_KEYWORDS = frozenset(
+    {
+        "where",
+        "group",
+        "order",
+        "having",
+        "limit",
+        "union",
+        "except",
+        "intersect",
+        "window",
+        "qualify",
+        "for",
+        "lock",
+        "into",
+        "procedure",
+        "set",
+        "fetch",
+    }
+)
+_SUBQUERY_START_KEYWORDS = frozenset({"select", "with", "values"})
+
+
+def _tokenize_sql(query: str) -> list[tuple[str, str]]:
+    """Tokenize identifiers, punctuation, and string literals in a query."""
+    tokens = []
+    for match in _SQL_TOKEN_RE.finditer(query):
+        kind = match.lastgroup
+        value = match.group()
+        if kind == "quoted":
+            value = value[1:-1].replace("``", "`")
+        tokens.append((kind, value))
+    return tokens
+
+
+def _iter_table_refs(query: str) -> Iterator[list[str]]:
+    """Yield identifier parts for each FROM/JOIN/DESCRIBE table reference.
+
+    The scan tracks FROM state per parenthesis depth.  Commas only introduce
+    another table when they appear at a depth with an active FROM clause, so
+    SELECT-list aliases, function arguments, and nested subqueries are handled
+    without treating their commas as table-list separators.
+    """
+    tokens = _tokenize_sql(query)
+    in_from = set()
+    expect_table = set()
+    depth = 0
+    index = 0
+    token_count = len(tokens)
+
+    while index < token_count:
+        kind, value = tokens[index]
+
+        if kind == "lparen":
+            if depth in expect_table:
+                expect_table.discard(depth)
+                depth += 1
+                in_from.add(depth)
+                expect_table.add(depth)
+            else:
+                depth += 1
+                in_from.discard(depth)
+                expect_table.discard(depth)
+            index += 1
+            continue
+
+        if kind == "rparen":
+            in_from.discard(depth)
+            expect_table.discard(depth)
+            if depth > 0:
+                depth -= 1
+            index += 1
+            continue
+
+        if kind == "comma":
+            if depth in in_from:
+                expect_table.add(depth)
+            index += 1
+            continue
+
+        if kind == "identifier":
+            keyword = value.lower()
+            if keyword in _TABLE_REF_KEYWORDS:
+                in_from.add(depth)
+                expect_table.add(depth)
+                index += 1
+                continue
+            if index == 0 and keyword in _DESCRIBE_KEYWORDS:
+                expect_table.add(depth)
+                index += 1
+                continue
+            if keyword in _SUBQUERY_START_KEYWORDS:
+                in_from.discard(depth)
+                expect_table.discard(depth)
+                index += 1
+                continue
+            if keyword in _FROM_CLAUSE_END_KEYWORDS:
+                in_from.discard(depth)
+                expect_table.discard(depth)
+                index += 1
+                continue
+
+        if depth in expect_table and kind in ("identifier", "quoted"):
+            parts = [tokens[index][1]]
+            index += 1
+            while (
+                index + 1 < token_count
+                and tokens[index][0] == "dot"
+                and tokens[index + 1][0] in ("identifier", "quoted")
+            ):
+                parts.append(tokens[index + 1][1])
+                index += 2
+            expect_table.discard(depth)
+            yield parts
+            continue
+
+        index += 1
 
 
 class KonfluxDevLakeSecurityManager:
@@ -177,14 +302,17 @@ class KonfluxDevLakeSecurityManager:
             is_admin = is_current_user_admin()
 
         allowed_schemas = self._allowed_schemas()
-        for match in _TABLE_REF_RE.finditer(query):
-            if match.group(2):
-                schema = match.group(1).lower().strip("`")
-                table = match.group(2).lower().strip("`")
+        for parts in _iter_table_refs(query):
+            if len(parts) > 2:
+                table_ref = ".".join(parts)
+                raise ValueError(f"Access to table reference '{table_ref}' is not allowed")
+            if len(parts) == 2:
+                schema = parts[0].lower().strip("`")
+                table = parts[1].lower().strip("`")
                 if schema in _BLOCKED_SCHEMAS or schema not in allowed_schemas:
                     raise ValueError(f"Access to schema '{schema}' is not allowed")
             else:
-                table = match.group(1).lower().strip("`")
+                table = parts[0].lower().strip("`")
             if self.is_table_denied(table, is_admin=is_admin):
                 raise ValueError(f"Access to table '{table}' is denied")
 

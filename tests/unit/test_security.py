@@ -341,6 +341,31 @@ class TestExtractAndCheckTableRefs:
         for query in queries:
             sec_mgr.extract_and_check_table_refs(query)  # should not raise
 
+    def test_allows_select_list_commas_and_table_aliases(self, sec_mgr):
+        """Test that SELECT-list and function commas are not treated as tables."""
+        queries = [
+            "SELECT pr.id, pr.title FROM lake.pull_requests pr",
+            "SELECT pm.project_name, IF(cdc._raw_data_table != '', "
+            "cdc._raw_data_table, cdc.cicd_scope_id) AS _raw_data_table "
+            "FROM lake.cicd_deployment_commits cdc",
+            "SELECT a.id, b.id FROM lake.incidents a, lake.repos b WHERE a.id = b.id",
+            "SELECT * FROM (SELECT pr.id, pr.title FROM lake.pull_requests pr) x",
+        ]
+        for query in queries:
+            sec_mgr.extract_and_check_table_refs(query)  # should not raise
+
+    def test_blocks_three_part_table_reference(self, sec_mgr):
+        """Test that invalid three-part table names are rejected."""
+        with pytest.raises(ValueError, match="lake.mysql.user"):
+            sec_mgr.extract_and_check_table_refs("SELECT * FROM lake.mysql.user")
+
+    def test_blocks_denied_table_inside_derived_table(self, sec_mgr):
+        """Test that subquery SELECT lists cannot hide a denied FROM target."""
+        with pytest.raises(ValueError, match="Access to schema 'mysql' is not allowed"):
+            sec_mgr.extract_and_check_table_refs(
+                "SELECT * FROM (SELECT a, b FROM mysql.user) x"
+            )
+
     def test_blocks_mysql_schema(self, sec_mgr):
         """Test that queries referencing mysql schema are blocked."""
         with pytest.raises(ValueError, match="Access to schema 'mysql' is not allowed"):
@@ -501,6 +526,13 @@ class TestValidateSqlQueryTableBlocking:
             "SELECT * FROM lake.incidents WHERE status = 'DONE'"
         )
         assert is_valid is True
+
+    def test_allows_aliased_columns_in_select_list(self, security_manager):
+        """Test that comma-separated aliased columns do not look like schemas."""
+        is_valid, msg = security_manager.validate_sql_query(
+            "SELECT pr.id, pr.title FROM lake.pull_requests pr"
+        )
+        assert is_valid is True, msg
 
     def test_non_admin_sql_cannot_read_admin_only_tables(self, security_manager):
         """Test that request-scoped non-admin users cannot read internal tables."""
