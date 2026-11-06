@@ -362,9 +362,7 @@ class TestExtractAndCheckTableRefs:
     def test_blocks_denied_table_inside_derived_table(self, sec_mgr):
         """Test that subquery SELECT lists cannot hide a denied FROM target."""
         with pytest.raises(ValueError, match="Access to schema 'mysql' is not allowed"):
-            sec_mgr.extract_and_check_table_refs(
-                "SELECT * FROM (SELECT a, b FROM mysql.user) x"
-            )
+            sec_mgr.extract_and_check_table_refs("SELECT * FROM (SELECT a, b FROM mysql.user) x")
 
     def test_blocks_mysql_schema(self, sec_mgr):
         """Test that queries referencing mysql schema are blocked."""
