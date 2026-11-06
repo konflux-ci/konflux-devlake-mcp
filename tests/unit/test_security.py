@@ -746,12 +746,39 @@ class TestKonfluxDevLakeSecurityManager:
             "INSERT INTO incidents VALUES (1, 'test')",
             "CREATE TABLE test (id INT)",
             "ALTER TABLE incidents ADD COLUMN test VARCHAR(255)",
+            "WITH x AS (SELECT 1) DELETE FROM lake.incidents",
+            "WITH x AS (SELECT 1) UPDATE lake.incidents SET status = 'DONE'",
+            "WITH x AS (SELECT 1) INSERT INTO lake.incidents SELECT 1",
+            "EXPLAIN ANALYZE DELETE FROM lake.incidents",
+            "EXPLAIN ANALYZE UPDATE lake.incidents SET status = 'DONE'",
         ]
 
         for query in dangerous_queries:
             is_valid, message = security_manager.validate_sql_query(query)
             assert is_valid is False
             assert "read-only" in message
+
+    def test_validate_sql_query_table_form_blocked_schema(self, security_manager):
+        """Test that TABLE form table references are checked like SELECT."""
+        blocked = [
+            "SELECT * FROM lake.incidents UNION TABLE mysql.user",
+            "SELECT * FROM lake.incidents WHERE id IN (TABLE mysql.user)",
+            "EXPLAIN TABLE mysql.user",
+        ]
+        for query in blocked:
+            is_valid, message = security_manager.validate_sql_query(query)
+            assert is_valid is False, f"Query should be blocked: {query}"
+            assert "mysql" in message.lower()
+
+    def test_validate_sql_query_keywords_in_literals_allowed(self, security_manager):
+        """Test that write keywords inside string literals are not rejected."""
+        queries = [
+            "SELECT * FROM lake.incidents WHERE title LIKE '%delete%'",
+            "SELECT * FROM lake.incidents WHERE summary = 'update the pipeline'",
+        ]
+        for query in queries:
+            is_valid, message = security_manager.validate_sql_query(query)
+            assert is_valid is True, f"Query should be allowed: {query}"
 
     def test_validate_sql_query_unbalanced_parentheses(self, security_manager):
         """Test detection of unbalanced parentheses."""

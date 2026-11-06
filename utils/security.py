@@ -45,7 +45,7 @@ _SQL_TOKEN_RE = re.compile(
     re.VERBOSE | re.DOTALL,
 )
 
-_TABLE_REF_KEYWORDS = frozenset({"from", "join", "straight_join"})
+_TABLE_REF_KEYWORDS = frozenset({"from", "join", "straight_join", "table"})
 _DESCRIBE_KEYWORDS = frozenset({"describe", "desc", "explain"})
 _FROM_CLAUSE_END_KEYWORDS = frozenset(
     {
@@ -68,6 +68,24 @@ _FROM_CLAUSE_END_KEYWORDS = frozenset(
     }
 )
 _SUBQUERY_START_KEYWORDS = frozenset({"select", "with", "values"})
+
+# Data-modifying keywords.  MySQL accepts these after WITH (... DELETE) and
+# after EXPLAIN [ANALYZE], so an allowed statement prefix is not sufficient.
+_UNSAFE_KEYWORDS = frozenset(
+    {
+        "insert",
+        "update",
+        "delete",
+        "replace",
+        "truncate",
+        "drop",
+        "alter",
+        "create",
+        "rename",
+        "grant",
+        "revoke",
+    }
+)
 
 
 def _tokenize_sql(query: str) -> list[tuple[str, str]]:
@@ -380,6 +398,16 @@ class KonfluxDevLakeSecurityManager:
                 self._validate_show_query(query_lower)
             elif not any(query_lower.startswith(p) for p in self._ALLOWED_STATEMENT_PREFIXES):
                 self.logger.info("Query blocked - not a read-only statement")
+                raise ValueError("Only read-only statements are allowed (SELECT, SHOW, DESCRIBE)")
+
+            # WITH and EXPLAIN accept a data-modifying body, so scan the
+            # statement for write keywords.  String literals and backticked
+            # names are tokenized separately, so only real keywords match.
+            unsafe = _UNSAFE_KEYWORDS.intersection(
+                value for kind, value in _tokenize_sql(query_lower) if kind == "identifier"
+            )
+            if unsafe:
+                self.logger.info(f"Query blocked - data-modifying keyword: {sorted(unsafe)}")
                 raise ValueError("Only read-only statements are allowed (SELECT, SHOW, DESCRIBE)")
 
             # Check for balanced parentheses
