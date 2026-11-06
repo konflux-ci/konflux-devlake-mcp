@@ -341,6 +341,29 @@ class TestExtractAndCheckTableRefs:
         for query in queries:
             sec_mgr.extract_and_check_table_refs(query)  # should not raise
 
+    def test_allows_select_list_commas_and_table_aliases(self, sec_mgr):
+        """Test that SELECT-list and function commas are not treated as tables."""
+        queries = [
+            "SELECT pr.id, pr.title FROM lake.pull_requests pr",
+            "SELECT pm.project_name, IF(cdc._raw_data_table != '', "
+            "cdc._raw_data_table, cdc.cicd_scope_id) AS _raw_data_table "
+            "FROM lake.cicd_deployment_commits cdc",
+            "SELECT a.id, b.id FROM lake.incidents a, lake.repos b WHERE a.id = b.id",
+            "SELECT * FROM (SELECT pr.id, pr.title FROM lake.pull_requests pr) x",
+        ]
+        for query in queries:
+            sec_mgr.extract_and_check_table_refs(query)  # should not raise
+
+    def test_blocks_three_part_table_reference(self, sec_mgr):
+        """Test that invalid three-part table names are rejected."""
+        with pytest.raises(ValueError, match="lake.mysql.user"):
+            sec_mgr.extract_and_check_table_refs("SELECT * FROM lake.mysql.user")
+
+    def test_blocks_denied_table_inside_derived_table(self, sec_mgr):
+        """Test that subquery SELECT lists cannot hide a denied FROM target."""
+        with pytest.raises(ValueError, match="Access to schema 'mysql' is not allowed"):
+            sec_mgr.extract_and_check_table_refs("SELECT * FROM (SELECT a, b FROM mysql.user) x")
+
     def test_blocks_mysql_schema(self, sec_mgr):
         """Test that queries referencing mysql schema are blocked."""
         with pytest.raises(ValueError, match="Access to schema 'mysql' is not allowed"):
@@ -479,12 +502,35 @@ class TestValidateSqlQueryTableBlocking:
         assert is_valid is False
         assert "mysql" in msg
 
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "SELECT * FROM lake . _devlake_api_keys",
+            "SELECT * FROM `lake` . `_devlake_api_keys`",
+            "SELECT * FROM lake\n# comment\n._devlake_api_keys",
+            "SELECT user FROM mysql . user",
+            "SELECT * FROM (lake . _raw_github_api_pull_requests)",
+            "DESCRIBE lake . _devlake_api_keys",
+        ],
+    )
+    def test_blocks_spaced_schema_qualifier(self, security_manager, query):
+        """Schema/table qualifiers separated by whitespace must still be denied."""
+        is_valid, msg = security_manager.validate_sql_query(query)
+        assert is_valid is False, f"Query should be blocked: {query}"
+
     def test_allows_normal_lake_select(self, security_manager):
         """Test that normal lake SELECT queries still pass."""
         is_valid, msg = security_manager.validate_sql_query(
             "SELECT * FROM lake.incidents WHERE status = 'DONE'"
         )
         assert is_valid is True
+
+    def test_allows_aliased_columns_in_select_list(self, security_manager):
+        """Test that comma-separated aliased columns do not look like schemas."""
+        is_valid, msg = security_manager.validate_sql_query(
+            "SELECT pr.id, pr.title FROM lake.pull_requests pr"
+        )
+        assert is_valid is True, msg
 
     def test_non_admin_sql_cannot_read_admin_only_tables(self, security_manager):
         """Test that request-scoped non-admin users cannot read internal tables."""
@@ -700,12 +746,39 @@ class TestKonfluxDevLakeSecurityManager:
             "INSERT INTO incidents VALUES (1, 'test')",
             "CREATE TABLE test (id INT)",
             "ALTER TABLE incidents ADD COLUMN test VARCHAR(255)",
+            "WITH x AS (SELECT 1) DELETE FROM lake.incidents",
+            "WITH x AS (SELECT 1) UPDATE lake.incidents SET status = 'DONE'",
+            "WITH x AS (SELECT 1) INSERT INTO lake.incidents SELECT 1",
+            "EXPLAIN ANALYZE DELETE FROM lake.incidents",
+            "EXPLAIN ANALYZE UPDATE lake.incidents SET status = 'DONE'",
         ]
 
         for query in dangerous_queries:
             is_valid, message = security_manager.validate_sql_query(query)
             assert is_valid is False
             assert "read-only" in message
+
+    def test_validate_sql_query_table_form_blocked_schema(self, security_manager):
+        """Test that TABLE form table references are checked like SELECT."""
+        blocked = [
+            "SELECT * FROM lake.incidents UNION TABLE mysql.user",
+            "SELECT * FROM lake.incidents WHERE id IN (TABLE mysql.user)",
+            "EXPLAIN TABLE mysql.user",
+        ]
+        for query in blocked:
+            is_valid, message = security_manager.validate_sql_query(query)
+            assert is_valid is False, f"Query should be blocked: {query}"
+            assert "mysql" in message.lower()
+
+    def test_validate_sql_query_keywords_in_literals_allowed(self, security_manager):
+        """Test that write keywords inside string literals are not rejected."""
+        queries = [
+            "SELECT * FROM lake.incidents WHERE title LIKE '%delete%'",
+            "SELECT * FROM lake.incidents WHERE summary = 'update the pipeline'",
+        ]
+        for query in queries:
+            is_valid, message = security_manager.validate_sql_query(query)
+            assert is_valid is True, f"Query should be allowed: {query}"
 
     def test_validate_sql_query_unbalanced_parentheses(self, security_manager):
         """Test detection of unbalanced parentheses."""
