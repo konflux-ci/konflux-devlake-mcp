@@ -117,7 +117,7 @@ class HistoricalTrendsTools(BaseTool):
             else:
                 result = {"success": False, "error": f"Unknown tool: {name}"}
 
-            return toon_encode(result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(result, delimiter=",", indent_size=2)
 
         except Exception as e:
             self.logger.error(f"Historical trends tool call failed: {e}")
@@ -128,7 +128,7 @@ class HistoricalTrendsTools(BaseTool):
                 "tool_name": name,
                 "arguments": arguments,
             }
-            return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(error_result, delimiter=",", indent_size=2)
 
     async def _get_historical_trends(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """

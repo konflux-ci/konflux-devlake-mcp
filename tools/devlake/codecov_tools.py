@@ -117,7 +117,7 @@ class CodecovTools(BaseTool):
             else:
                 result = {"success": False, "error": f"Unknown Codecov tool: {name}"}
 
-            return toon_encode(result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(result, delimiter=",", indent_size=2)
 
         except Exception as e:
             self.logger.error(f"Codecov tool call failed: {e}")
@@ -128,7 +128,7 @@ class CodecovTools(BaseTool):
                 "tool_name": name,
                 "arguments": arguments,
             }
-            return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(error_result, delimiter=",", indent_size=2)
 
     async def _execute_with_timeout(
         self, query: str, limit: int, timeout: int = 60, params: tuple = None

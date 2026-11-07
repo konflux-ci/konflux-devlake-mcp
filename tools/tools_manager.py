@@ -117,9 +117,7 @@ class KonfluxDevLakeToolsManager:
                     "error": f"Unknown tool: {name}",
                     "available_tools": list(self._tool_mapping.keys()),
                 }
-                return toon_encode(
-                    error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""}
-                )
+                return toon_encode(error_result, delimiter=",", indent_size=2)
 
             # Execute the tool using the appropriate module
             module = self._tool_mapping[name]
@@ -136,7 +134,7 @@ class KonfluxDevLakeToolsManager:
                 "tool_name": name,
                 "arguments": arguments,
             }
-            return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(error_result, delimiter=",", indent_size=2)
 
     def get_tool_statistics(self) -> Dict[str, Any]:
         """
