@@ -52,7 +52,7 @@ class MyTool(BaseTool):
     
     async def call_tool(self, name: str, arguments: Dict[str, Any]) -> str:
         # Use toon_encode for output
-        return toon_encode(result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+        return toon_encode(result, delimiter=",", indent_size=2)
 ```
 
 ### Database Query Patterns
@@ -145,7 +145,7 @@ utils/
 
 ### TOON Format (Token-Efficient)
 - Use `toon_encode()` from `toon_format` library
-- Configuration: `{"delimiter": ",", "indent": 2, "lengthMarker": ""}`
+- Options are keyword-only: `delimiter=",", indent_size=2`
 - Use TOON instead of JSON to reduce token costs (30-60% reduction)
 
 ### Response Structure

@@ -16,7 +16,7 @@ Request -> `server/handlers/tool_handler.py` (security) -> `tools/tools_manager.
 
 1. Create `tools/devlake/my_tool.py` extending `BaseTool`
 2. `get_tools()` -> `List[mcp.types.Tool]` with JSON `inputSchema`
-3. `async call_tool()` -> `toon_encode(result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})`
+3. `async call_tool()` -> `toon_encode(result, delimiter=",", indent_size=2)`
 4. Register in `tools/tools_manager.py` `_tool_modules` list
 5. Add unit test: `tests/unit/test_my_tool.py` with `@pytest.mark.unit`
 7. Update `skills/devlake/` if tool interface or SQL changed (see Skill Update Rule)
@@ -43,7 +43,7 @@ Commands: `make test-unit` (mocked DB) | `make test-integration` (docker compose
 
 - Python 3.11+ with type hints, async for all I/O
 - `black --line-length 100`, `flake8`, `yamllint` (run via `pre-commit run --all-files`)
-- TOON format for tool responses (not JSON) — use `toon_encode()`/`toon_decode()`
+- TOON format for tool responses (not JSON) — use `toon_encode()`/`toon_decode()`. Options are keyword-only since toon-format 1.0 (`delimiter=`, `indent_size=`); passing them as a dict raises `TypeError`
 - `log_tool_call()` required in every `call_tool()` implementation
 - No emojis in code, comments, docstrings, or project files
 
@@ -56,4 +56,4 @@ When modifying tools, update the corresponding skills:
 
 ## Core Dependencies
 
-`mcp>=1.23.0` | `aiomysql` | `toon-format` (from git) | `uvicorn`/`starlette` | `PyJWT`/`httpx`
+`mcp>=1.23.0` | `aiomysql` | `toon-format==1.2.0` (pinned in `requirements.txt`) | `uvicorn`/`starlette` | `PyJWT`/`httpx`
