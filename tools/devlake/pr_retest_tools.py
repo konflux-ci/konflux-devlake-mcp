@@ -138,7 +138,7 @@ class PRRetestTools(BaseTool):
                 result = {"success": False, "error": f"Unknown PR retest tool: {name}"}
 
             # Use TOON format for token-efficient serialization (30-60% reduction vs JSON)
-            return toon_encode(result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(result, delimiter=",", indent_size=2)
 
         except Exception as e:
             self.logger.error(f"PR retest tool call failed: {e}")
@@ -150,7 +150,7 @@ class PRRetestTools(BaseTool):
                 "arguments": arguments,
             }
             # Use TOON format for error responses as well
-            return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(error_result, delimiter=",", indent_size=2)
 
     async def _get_repos_for_project(self, project_name: str) -> List[str]:
         """

@@ -186,7 +186,7 @@ class DatabaseTools(BaseTool):
             else:
                 result = {"success": False, "error": f"Unknown database tool: {name}"}
 
-            return toon_encode(result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(result, delimiter=",", indent_size=2)
 
         except Exception as e:
             self.logger.error(f"Database tool call failed: {e}")
@@ -197,7 +197,7 @@ class DatabaseTools(BaseTool):
                 "tool_name": name,
                 "arguments": arguments,
             }
-            return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(error_result, delimiter=",", indent_size=2)
 
     async def _connect_database_tool(self) -> Dict[str, Any]:
         """Test database connectivity and return connection information."""

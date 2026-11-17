@@ -145,13 +145,13 @@ class PRCycleTimeTools(BaseTool):
             else:
                 result = {"success": False, "error": f"Unknown tool: {name}"}
 
-            return toon_encode(result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(result, delimiter=",", indent_size=2)
 
         except Exception as e:
             self.logger.error(f"PR cycle time tool call failed: {e}")
             log_tool_call(name, arguments, success=False, error=str(e))
             error_result = {"success": False, "error": str(e)}
-            return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(error_result, delimiter=",", indent_size=2)
 
     async def _execute_with_timeout(
         self, query: str, limit: int, timeout: int = 60, params: tuple = None

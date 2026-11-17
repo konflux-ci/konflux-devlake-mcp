@@ -91,7 +91,7 @@ class LeadTimeTools(BaseTool):
             else:
                 result = {"success": False, "error": f"Unknown tool: {name}"}
 
-            return toon_encode(result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(result, delimiter=",", indent_size=2)
 
         except Exception as e:
             self.logger.error(f"Lead Time tool call failed: {e}")
@@ -102,7 +102,7 @@ class LeadTimeTools(BaseTool):
                 "tool_name": name,
                 "arguments": arguments,
             }
-            return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(error_result, delimiter=",", indent_size=2)
 
     async def _get_lead_time_for_changes(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """

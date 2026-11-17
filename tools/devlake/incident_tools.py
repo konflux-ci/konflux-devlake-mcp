@@ -125,7 +125,7 @@ class IncidentTools(BaseTool):
             else:
                 result = {"success": False, "error": f"Unknown incident tool: {name}"}
 
-            return toon_encode(result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(result, delimiter=",", indent_size=2)
 
         except Exception as e:
             self.logger.error(f"Incident tool call failed: {e}")
@@ -136,7 +136,7 @@ class IncidentTools(BaseTool):
                 "tool_name": name,
                 "arguments": arguments,
             }
-            return toon_encode(error_result, {"delimiter": ",", "indent": 2, "lengthMarker": ""})
+            return toon_encode(error_result, delimiter=",", indent_size=2)
 
     async def _get_incidents_tool(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """

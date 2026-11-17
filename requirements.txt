@@ -28,7 +28,7 @@ ldap3>=2.9.0
 python-json-logger>=2.0.0
 
 # Data serialization (TOON format for token-efficient responses)
-toon-format @ git+https://github.com/toon-format/toon-python.git
+toon-format==1.2.0
 
 # Development dependencies
 pytest>=7.0.0
