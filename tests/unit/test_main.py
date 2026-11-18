@@ -64,6 +64,30 @@ class TestCreateParser:
 
 @pytest.mark.unit
 class TestCreateConfig:
+    def test_env_db_values_take_precedence_over_args(self, monkeypatch):
+        monkeypatch.setenv("DB_HOST", "env-host")
+        monkeypatch.setenv("DB_PORT", "3307")
+        monkeypatch.setenv("DB_USER", "env-user")
+        monkeypatch.setenv("DB_PASSWORD", "env-password")
+        monkeypatch.setenv("DB_DATABASE", "env-db")
+        args = argparse.Namespace(
+            transport="http",
+            host="0.0.0.0",
+            port=3000,
+            db_host="arg-host",
+            db_port=3306,
+            db_user="arg-user",
+            db_password="arg-password",
+            db_database="arg-db",
+            log_level="INFO",
+        )
+        config = create_config(args)
+        assert config.database.host == "env-host"
+        assert config.database.port == 3307
+        assert config.database.user == "env-user"
+        assert config.database.password == "env-password"
+        assert config.database.database == "env-db"
+
     def test_from_args(self):
         args = argparse.Namespace(
             transport="http",
